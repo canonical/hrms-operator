@@ -50,7 +50,7 @@ class DatabaseConfig(pydantic.BaseModel):
     """Database connection configuration."""
 
     host: str
-    port: int = 5432
+    port: int = 3306
     user: str
     password: str
     database: str
@@ -168,7 +168,7 @@ class CharmState(pydantic.BaseModel):
                 port = int(port_str)
             else:
                 host = primary_endpoint
-                port = 5432
+                port = 3306
 
             # Prefer explicit initial-db-name config, then what the relation
             # provided, then derive from the site name.
@@ -178,7 +178,7 @@ class CharmState(pydantic.BaseModel):
                 or re.sub(r"[.\-]", "_", site_name)
             )
 
-            # Use the username from the relation data (postgresql-k8s creates a
+            # Use the username from the relation data (mariadb-k8s creates a
             # user with the same name as the database, which Frappe requires).
             db_user = data.get("username", "") or db_name
 

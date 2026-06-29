@@ -133,13 +133,13 @@ class FrappeWorkload:
     def create_site(self, state: CharmState) -> None:
         """Create a new Frappe site and install the erpnext and hrms apps.
 
-        The postgresql-k8s charm (data-platform-libs) provisions a dedicated
-        PostgreSQL role and database for the application.
+        The mariadb-k8s charm (data-platform-libs) provisions a dedicated
+        MariaDB user and database for the application.
 
         Site creation steps:
 
         1. Remove the previous (partial) site directory if it exists.
-        2. Run ``bench new-site --no-setup-db --db-type postgres`` to bootstrap
+        2. Run ``bench new-site --no-setup-db --db-type mariadb`` to bootstrap
            Frappe DB schema and install the ``frappe`` app.
         3. Install the ``erpnext`` app (required by HRMS v16).
         4. Install the ``hrms`` app.
@@ -159,8 +159,8 @@ class FrappeWorkload:
             raise WorkloadError(f"Failed to remove old site dir: {exc}") from exc
 
         # 2. Bootstrap Frappe DB schema via bench new-site --no-setup-db.
-        #    --no-setup-db: skip PostgreSQL role/database creation (already done
-        #    by postgresql-k8s charm); just import framework schema and install frappe.
+        #    --no-setup-db: skip MariaDB user/database creation (already done
+        #    by mariadb-k8s charm); just import framework schema and install frappe.
         logger.info(
             "Creating Frappe site %r via bench new-site --no-setup-db",
             state.site_name,
@@ -172,7 +172,7 @@ class FrappeWorkload:
                     "new-site",
                     "--no-setup-db",
                     "--db-type",
-                    "postgres",
+                    "mariadb",
                     "--db-host",
                     db.host,
                     "--db-port",

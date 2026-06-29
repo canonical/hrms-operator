@@ -80,20 +80,20 @@ def _populate_nginx_template(harness: ops.testing.Harness) -> None:
     (nginx_dir / "frappe.conf.template").write_text(_NGINX_TEMPLATE)
 
 
-def add_postgresql_relation(
+def add_mysql_relation(
     harness: ops.testing.Harness,
-    host: str = "pg-host",
-    port: int = 5432,
+    host: str = "mariadb-host",
+    port: int = 3306,
     user: str = "frappe_user",
     password: str = "db-password",
     database: str = "hrms_db",
 ) -> int:
-    """Add a postgresql relation with provider app data."""
-    rel_id = harness.add_relation("postgresql", "postgresql-k8s")
-    harness.add_relation_unit(rel_id, "postgresql-k8s/0")
+    """Add a mysql relation with provider app data."""
+    rel_id = harness.add_relation("mysql", "mariadb-k8s")
+    harness.add_relation_unit(rel_id, "mariadb-k8s/0")
     harness.update_relation_data(
         rel_id,
-        "postgresql-k8s",
+        "mariadb-k8s",
         {
             "endpoints": f"{host}:{port}",
             "username": user,
@@ -165,19 +165,19 @@ class TestBlockedStatus:
         harness.evaluate_status()
         assert isinstance(harness.model.unit.status, ops.WaitingStatus)
 
-    def test_blocked_waiting_for_postgresql(self):
+    def test_blocked_waiting_for_mysql(self):
         harness = make_harness()
         harness.begin()
         harness.set_can_connect(CONTAINER, True)
         harness.evaluate_status()
         assert isinstance(harness.model.unit.status, ops.BlockedStatus)
-        assert "postgresql" in harness.model.unit.status.message.lower()
+        assert "mysql" in harness.model.unit.status.message.lower()
 
     def test_blocked_waiting_for_redis(self):
         harness = make_harness()
         harness.begin()
         harness.set_can_connect(CONTAINER, True)
-        add_postgresql_relation(harness)
+        add_mysql_relation(harness)
         harness.evaluate_status()
         assert isinstance(harness.model.unit.status, ops.BlockedStatus)
         assert "redis" in harness.model.unit.status.message.lower()
@@ -186,7 +186,7 @@ class TestBlockedStatus:
         harness = make_harness(site_exists=False)
         harness.begin()
         harness.set_can_connect(CONTAINER, True)
-        add_postgresql_relation(harness)
+        add_mysql_relation(harness)
         add_redis_relation(harness)
         harness.evaluate_status()
         assert isinstance(harness.model.unit.status, ops.WaitingStatus)
@@ -196,7 +196,7 @@ class TestBlockedStatus:
         harness = make_harness(site_exists=True)
         harness.begin()
         harness.set_can_connect(CONTAINER, True)
-        add_postgresql_relation(harness)
+        add_mysql_relation(harness)
         add_redis_relation(harness)
         harness.evaluate_status()
         assert isinstance(harness.model.unit.status, ops.ActiveStatus)
@@ -211,7 +211,7 @@ class TestPebbleLayer:
     def _setup_ready_harness(self, **kwargs) -> ops.testing.Harness:
         harness = make_harness(**kwargs)
         harness.begin()
-        add_postgresql_relation(harness)
+        add_mysql_relation(harness)
         add_redis_relation(harness)
         _populate_nginx_template(harness)
         harness.set_can_connect(CONTAINER, True)
@@ -287,7 +287,7 @@ class TestConfigFiles:
     def test_common_site_config_written(self):
         harness = make_harness()
         harness.begin()
-        add_postgresql_relation(harness, host="db.local", port=5432)
+        add_mysql_relation(harness, host="db.local", port=3306)
         add_redis_relation(harness, host="redis.local", port=6379)
         _populate_nginx_template(harness)
         harness.set_can_connect(CONTAINER, True)
@@ -300,7 +300,7 @@ class TestConfigFiles:
         config = json.loads(config_path.read_text())
 
         assert config["db_host"] == "db.local"
-        assert config["db_port"] == 5432
+        assert config["db_port"] == 3306
         assert config["redis_cache"] == "redis://redis.local:6379"
         assert config["redis_queue"] == "redis://redis.local:6379"
         assert config["socketio_port"] == 9000
@@ -308,7 +308,7 @@ class TestConfigFiles:
     def test_nginx_config_written(self):
         harness = make_harness(site_name=SITE_NAME)
         harness.begin()
-        add_postgresql_relation(harness)
+        add_mysql_relation(harness)
         add_redis_relation(harness)
         _populate_nginx_template(harness)
         harness.set_can_connect(CONTAINER, True)
@@ -324,7 +324,7 @@ class TestConfigFiles:
     def test_nginx_uses_ingress_host_when_available(self):
         harness = make_harness(site_name=SITE_NAME)
         harness.begin()
-        add_postgresql_relation(harness)
+        add_mysql_relation(harness)
         add_redis_relation(harness)
         add_ingress_relation(harness, url="http://external.example.com")
         _populate_nginx_template(harness)
@@ -344,7 +344,7 @@ class TestConfigFiles:
 
         harness = make_harness(site_name=SITE_NAME)
         harness.begin()
-        add_postgresql_relation(harness, host="db.local")
+        add_mysql_relation(harness, host="db.local")
         add_redis_relation(harness, host="redis.local")
         _populate_nginx_template(harness)
         harness.set_can_connect(CONTAINER, True)
@@ -371,7 +371,7 @@ class TestCharmState:
         harness = ops.testing.Harness(FrappeHRMSCharm)
         harness.update_config({"site-name": "", "admin-password": "pw"})
         harness.begin()
-        add_postgresql_relation(harness)
+        add_mysql_relation(harness)
         add_redis_relation(harness)
 
         with pytest.raises(InvalidConfigError) as exc_info:
@@ -389,7 +389,7 @@ class TestCharmState:
         harness = ops.testing.Harness(FrappeHRMSCharm)
         harness.update_config({"site-name": SITE_NAME, "admin-password": ""})
         harness.begin()
-        add_postgresql_relation(harness)
+        add_mysql_relation(harness)
         add_redis_relation(harness)
 
         with pytest.raises(InvalidConfigError) as exc_info:
@@ -406,9 +406,7 @@ class TestCharmState:
 
         harness = make_harness()
         harness.begin()
-        add_postgresql_relation(
-            harness, host="db.local", port=5432, user="frappe_user", password="pw"
-        )
+        add_mysql_relation(harness, host="db.local", port=3306, user="frappe_user", password="pw")
         add_redis_relation(harness)
 
         state = CharmState.from_charm(
@@ -420,7 +418,7 @@ class TestCharmState:
 
         assert state.database is not None
         assert state.database.host == "db.local"
-        assert state.database.port == 5432
+        assert state.database.port == 3306
         assert state.database.user == "frappe_user"
         assert state.database.password == "pw"
 
@@ -429,7 +427,7 @@ class TestCharmState:
 
         harness = make_harness()
         harness.begin()
-        add_postgresql_relation(harness)
+        add_mysql_relation(harness)
         add_redis_relation(harness, host="redis.local", port=6379)
 
         state = CharmState.from_charm(
@@ -449,7 +447,7 @@ class TestCharmState:
 
         harness = make_harness()
         harness.begin()
-        add_postgresql_relation(harness)
+        add_mysql_relation(harness)
         add_redis_relation(harness)
 
         state = CharmState.from_charm(
@@ -465,7 +463,7 @@ class TestCharmState:
 
         harness = make_harness()
         harness.begin()
-        add_postgresql_relation(harness)
+        add_mysql_relation(harness)
         add_redis_relation(harness)
         add_ingress_relation(harness, url="http://external.example.com/hrms")
 

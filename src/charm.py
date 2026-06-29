@@ -13,7 +13,7 @@ Architecture:
   * ``charm.py``    - Juju event wiring and orchestration (this file)
 
 Relations:
-  * ``postgresql`` (requires) - PostgreSQL via data-platform-libs
+  * ``mysql``      (requires) - MariaDB via data-platform-libs
   * ``redis``      (requires) - Redis via redis-k8s lib
   * ``ingress``    (requires) - Traefik ingress via traefik-k8s lib
 """
@@ -31,7 +31,7 @@ from workload import FrappeWorkload, WorkloadError
 logger = logging.getLogger(__name__)
 
 CONTAINER_NAME = "frappe-hrms"
-DATABASE_RELATION = "postgresql"
+DATABASE_RELATION = "mysql"
 REDIS_RELATION = "redis"
 INGRESS_RELATION = "ingress"
 HTTP_PORT = 8080

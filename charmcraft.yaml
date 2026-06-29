@@ -22,7 +22,7 @@ description: |
 
   This charm deploys Frappe HRMS on Kubernetes, managing the gunicorn backend,
   nginx frontend, Socket.IO websocket, background queue workers, and the
-  Frappe scheduler. It integrates with PostgreSQL (via data-platform-libs) and
+  Frappe scheduler. It integrates with MariaDB (via data-platform-libs) and
   Redis, and exposes the application via Traefik ingress.
 
 base: ubuntu@24.04
@@ -49,8 +49,8 @@ resources:
     upstream-source: ghcr.io/canonical/frappe-hrms:latest
 
 requires:
-  postgresql:
-    interface: postgresql_client
+  mysql:
+    interface: mysql_client
     limit: 1
   redis:
     interface: redis
