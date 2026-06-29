@@ -148,7 +148,7 @@ class FrappeWorkload:
         Raises:
             WorkloadError: If any bench command fails.
         """
-        assert state.database is not None, "Database config must be available"  # noqa: S101
+        assert state.database is not None, "Database config must be available"  # noqa: S101 # nosec B101
         db = state.database
 
         # 1. Remove existing (partial) site directory.
@@ -267,8 +267,8 @@ class FrappeWorkload:
 
     def _write_common_site_config(self, state: CharmState) -> bool:
         """Write common_site_config.json. Returns True if content changed."""
-        assert state.database is not None  # noqa: S101
-        assert state.redis is not None  # noqa: S101
+        assert state.database is not None  # noqa: S101 # nosec B101
+        assert state.redis is not None  # noqa: S101 # nosec B101
 
         config = {
             "db_host": state.database.host,

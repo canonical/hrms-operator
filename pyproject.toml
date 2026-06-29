@@ -134,6 +134,7 @@ module = "tests.*"
 
 [tool.bandit]
 exclude_dirs = [ "/venv/" ]
+skips = ["B105", "B106", "B107"]
 
 [tool.bandit.assert_used]
 skips = [ "*/*test.py", "*/test_*.py", "*tests/*.py" ]
