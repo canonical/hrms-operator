@@ -30,4 +30,5 @@ header:
   - 'docs/release-notes/artifacts/*.yaml'
   - 'uv.lock'
   - 'lib/**'
+  - 'templates/**'
   comment: on-failure
