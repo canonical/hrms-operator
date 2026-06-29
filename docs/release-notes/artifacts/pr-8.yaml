@@ -4,7 +4,7 @@ changes:
 - title: Added Frappe HRMS charm implementation
   author: swetha1654
   type: major
-  description: Replaced the template charm with a full Frappe HRMS Kubernetes charm implementation, including PostgreSQL, Redis, and Traefik ingress integrations.
+  description: Replaced the template charm with a full Frappe HRMS Kubernetes charm implementation, including MariaDB, Redis, and Traefik ingress integrations.
   urls:
     pr:
       - "https://github.com/canonical/hrms-operator/pull/8"

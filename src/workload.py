@@ -309,8 +309,8 @@ class FrappeWorkload:
         rendered = (
             template.replace("FRAPPE_SERVER_NAME", server_name)
             .replace("FRAPPE_SITE_NAME_HEADER", state.site_name)
-            .replace("PROXY_READ_TIMEOUT", str(state.proxy_read_timeout))
-            .replace("CLIENT_MAX_BODY_SIZE", state.client_max_body_size)
+            .replace("PROXY_READ_TIMEOUT", "120")
+            .replace("CLIENT_MAX_BODY_SIZE", "50m")
         )
         return self._push_if_changed(NGINX_CONF, rendered, make_dirs=True)
 

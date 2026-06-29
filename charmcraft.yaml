@@ -38,15 +38,12 @@ parts:
 
 containers:
   frappe-hrms:
-    resource: frappe-hrms-image
+    resource: hrms-image
 
 resources:
-  frappe-hrms-image:
+  hrms-image:
     type: oci-image
-    description: |
-      Frappe HRMS OCI image built with rockcraft. Contains Frappe Framework v15,
-      ERPNext v15, and HRMS with all runtime dependencies.
-    upstream-source: ghcr.io/canonical/frappe-hrms:latest
+    description: Frappe HRMS OCI image built with rockcraft.
 
 requires:
   mysql:
@@ -73,23 +70,4 @@ config:
       description: |
         Password for the Frappe "Administrator" account. Required for initial
         site creation. After setup, this can be changed from within Frappe.
-      default: ""
-    proxy-read-timeout:
-      type: int
-      description: |
-        Nginx proxy read timeout in seconds. Increase for long-running operations
-        such as large payroll runs or data imports.
-      default: 120
-    client-max-body-size:
-      type: string
-      description: |
-        Maximum allowed size of the client request body for nginx. Use standard
-        nginx size notation (e.g., 50m, 100m, 1g). Increase for large file uploads.
-      default: "50m"
-    initial-db-name:
-      type: string
-      description: |
-        Override for the initial database name. If empty, the database name is
-        derived from the site name by replacing hyphens and dots with underscores.
-        Only used during initial site creation.
       default: ""

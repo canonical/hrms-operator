@@ -85,10 +85,6 @@ class CharmState(pydantic.BaseModel):
     site_name: str
     admin_password: str
 
-    # Nginx tuning
-    proxy_read_timeout: int = 120
-    client_max_body_size: str = "50m"
-
     # Integration data (None if not yet available)
     database: Optional[DatabaseConfig] = None
     redis: Optional[RedisConfig] = None
@@ -124,18 +120,13 @@ class CharmState(pydantic.BaseModel):
         if not admin_password:
             raise InvalidConfigError("admin-password")
 
-        proxy_read_timeout = int(charm.config.get("proxy-read-timeout", 120))
-        client_max_body_size = str(charm.config.get("client-max-body-size", "50m"))
-
-        database = cls._collect_database(database_requirer, site_name, charm)
+        database = cls._collect_database(database_requirer, site_name)
         redis = cls._collect_redis(redis_requirer)
         external_host = cls._collect_ingress_host(ingress_requirer)
 
         return cls(
             site_name=site_name,
             admin_password=admin_password,
-            proxy_read_timeout=proxy_read_timeout,
-            client_max_body_size=client_max_body_size,
             database=database,
             redis=redis,
             external_host=external_host,
@@ -149,7 +140,6 @@ class CharmState(pydantic.BaseModel):
     def _collect_database(
         database_requirer: DatabaseRequires,
         site_name: str,
-        charm: ops.CharmBase,
     ) -> Optional[DatabaseConfig]:
         """Extract database config from the DatabaseRequires helper."""
         if not database_requirer.is_resource_created():
@@ -170,13 +160,8 @@ class CharmState(pydantic.BaseModel):
                 host = primary_endpoint
                 port = 3306
 
-            # Prefer explicit initial-db-name config, then what the relation
-            # provided, then derive from the site name.
-            db_name = (
-                str(charm.config.get("initial-db-name", "")).strip()
-                or data.get("database", "")
-                or re.sub(r"[.\-]", "_", site_name)
-            )
+            # Derive db name from site name (mariadb-k8s sets database == username).
+            db_name = data.get("database", "") or re.sub(r"[.\-]", "_", site_name)
 
             # Use the username from the relation data (mariadb-k8s creates a
             # user with the same name as the database, which Frappe requires).

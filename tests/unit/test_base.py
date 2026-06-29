@@ -9,7 +9,7 @@ import ops
 import ops.testing
 import pytest
 
-from charm import FrappeHRMSCharm
+from charm import HRMSCharm
 
 CONTAINER = "frappe-hrms"
 SITE_NAME = "hrms.example.com"
@@ -35,7 +35,7 @@ def make_harness(
     site_exists: bool = False,
 ) -> ops.testing.Harness:
     """Create and configure a Harness instance with exec handlers registered."""
-    harness = ops.testing.Harness(FrappeHRMSCharm)
+    harness = ops.testing.Harness(HRMSCharm)
     harness.update_config(
         {
             "site-name": site_name,
@@ -144,32 +144,32 @@ def add_ingress_relation(
 
 class TestBlockedStatus:
     def test_blocked_without_site_name(self):
-        harness = ops.testing.Harness(FrappeHRMSCharm)
+        harness = ops.testing.Harness(HRMSCharm)
         harness.update_config({"site-name": "", "admin-password": "pwd"})
         harness.begin()
-        harness.evaluate_status()
+        harness.charm.on.config_changed.emit()
         assert isinstance(harness.model.unit.status, ops.BlockedStatus)
         assert "site-name" in harness.model.unit.status.message
 
     def test_blocked_without_admin_password(self):
-        harness = ops.testing.Harness(FrappeHRMSCharm)
+        harness = ops.testing.Harness(HRMSCharm)
         harness.update_config({"site-name": SITE_NAME, "admin-password": ""})
         harness.begin()
-        harness.evaluate_status()
+        harness.charm.on.config_changed.emit()
         assert isinstance(harness.model.unit.status, ops.BlockedStatus)
         assert "admin-password" in harness.model.unit.status.message
 
     def test_waiting_for_pebble_when_config_ok(self):
         harness = make_harness()
         harness.begin()
-        harness.evaluate_status()
+        harness.charm.on.config_changed.emit()
         assert isinstance(harness.model.unit.status, ops.WaitingStatus)
 
     def test_blocked_waiting_for_mysql(self):
         harness = make_harness()
         harness.begin()
         harness.set_can_connect(CONTAINER, True)
-        harness.evaluate_status()
+        harness.charm.on.config_changed.emit()
         assert isinstance(harness.model.unit.status, ops.BlockedStatus)
         assert "mysql" in harness.model.unit.status.message.lower()
 
@@ -178,27 +178,29 @@ class TestBlockedStatus:
         harness.begin()
         harness.set_can_connect(CONTAINER, True)
         add_mysql_relation(harness)
-        harness.evaluate_status()
+        harness.charm.on.config_changed.emit()
         assert isinstance(harness.model.unit.status, ops.BlockedStatus)
         assert "redis" in harness.model.unit.status.message.lower()
 
-    def test_waiting_when_site_not_yet_created(self):
+    def test_active_after_site_creation(self):
+        """Reconcile creates the site when it doesn't exist and ends up Active."""
         harness = make_harness(site_exists=False)
         harness.begin()
-        harness.set_can_connect(CONTAINER, True)
         add_mysql_relation(harness)
         add_redis_relation(harness)
-        harness.evaluate_status()
-        assert isinstance(harness.model.unit.status, ops.WaitingStatus)
-        assert "site" in harness.model.unit.status.message.lower()
+        _populate_nginx_template(harness)
+        harness.set_can_connect(CONTAINER, True)
+        harness.container_pebble_ready(CONTAINER)
+        assert isinstance(harness.model.unit.status, ops.ActiveStatus)
 
     def test_active_when_site_exists(self):
         harness = make_harness(site_exists=True)
         harness.begin()
-        harness.set_can_connect(CONTAINER, True)
         add_mysql_relation(harness)
         add_redis_relation(harness)
-        harness.evaluate_status()
+        _populate_nginx_template(harness)
+        harness.set_can_connect(CONTAINER, True)
+        harness.container_pebble_ready(CONTAINER)
         assert isinstance(harness.model.unit.status, ops.ActiveStatus)
 
 
@@ -368,7 +370,7 @@ class TestCharmState:
     def test_state_raises_on_missing_site_name(self):
         from state import CharmState, InvalidConfigError
 
-        harness = ops.testing.Harness(FrappeHRMSCharm)
+        harness = ops.testing.Harness(HRMSCharm)
         harness.update_config({"site-name": "", "admin-password": "pw"})
         harness.begin()
         add_mysql_relation(harness)
@@ -386,7 +388,7 @@ class TestCharmState:
     def test_state_raises_on_missing_admin_password(self):
         from state import CharmState, InvalidConfigError
 
-        harness = ops.testing.Harness(FrappeHRMSCharm)
+        harness = ops.testing.Harness(HRMSCharm)
         harness.update_config({"site-name": SITE_NAME, "admin-password": ""})
         harness.begin()
         add_mysql_relation(harness)
