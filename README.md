@@ -13,7 +13,7 @@ Use links instead.
 Frappe HRMS is an open-source, modern HR and payroll application built on the Frappe Framework. This charm deploys Frappe HRMS on Kubernetes, integrating with PostgreSQL, Redis, and Traefik ingress.
 
 Like any Juju charm, this charm supports one-line deployment, configuration, integration, scaling, and more. For Charmed Frappe HRMS, this includes:
-* Employee lifecycle management (onboarding, transfers, exit)
+* Employee lifecycle management (hiring, transfers, exit)
 * Leave and attendance management
 * Expense claims and payroll processing
 * Performance management
