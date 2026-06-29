@@ -28,3 +28,8 @@ def pytest_addoption(parser):
         action="store",
         help="temporarily-created model name",
     )
+    parser.addoption(
+        "--frappe-hrms-image",
+        default="ghcr.io/canonical/frappe-hrms:latest",
+        help="OCI image to use for the hrms-image charm resource.",
+    )

@@ -10,15 +10,6 @@ import jubilant
 import pytest
 
 
-def pytest_addoption(parser: pytest.Parser) -> None:
-    """Register extra CLI options used by the integration tests."""
-    parser.addoption(
-        "--frappe-hrms-image",
-        default="ghcr.io/canonical/frappe-hrms:latest",
-        help="OCI image to use for the hrms-image charm resource.",
-    )
-
-
 @pytest.fixture(scope="module", name="charm")
 def charm_fixture(pytestconfig: pytest.Config):
     """Get value from parameter charm-file."""
