@@ -1,29 +1,29 @@
 # Copyright 2025 Canonical Ltd.
 # See LICENSE file for licensing details.
 # This file configures Charmcraft.
-# See https://canonical-charmcraft.readthedocs-hosted.com/stable/howto/manage-charmcraft/ 
+# See https://canonical-charmcraft.readthedocs-hosted.com/stable/howto/manage-charmcraft/
 # for guidance.
 
 type: charm
-name: platform-engineering-charm-template
-title: Charm Template
-summary: A very short one-line summary of the charm.
+name: frappe-hrms
+title: Frappe HRMS
+summary: Open Source HR and Payroll Software for Kubernetes
 links:
-  documentation: https://discourse.charmhub.io
-  issues: 
-    https://github.com/canonical/platform-engineering-charm-template/issues
-  source: https://github.com/canonical/platform-engineering-charm-template
+  documentation: https://docs.frappe.io/hr
+  issues: https://github.com/canonical/hrms-operator/issues
+  source: https://github.com/canonical/hrms-operator
   contact: https://launchpad.net/~canonical-is-devops
 
 description: |
-  A single sentence that says what the charm is, concisely and memorably.
+  Frappe HRMS is an open-source, modern HR and payroll application built on
+  the Frappe Framework. It provides over 13 modules covering employee lifecycle,
+  leave and attendance management, expense claims, performance management,
+  payroll processing, and more.
 
-  A paragraph of one to three short sentences, that describe what the charm does.
-
-  A third paragraph that explains what need the charm meets.
-
-  Finally, a paragraph that describes whom the charm is useful for.
-
+  This charm deploys Frappe HRMS on Kubernetes, managing the gunicorn backend,
+  nginx frontend, Socket.IO websocket, background queue workers, and the
+  Frappe scheduler. It integrates with PostgreSQL (via data-platform-libs) and
+  Redis, and exposes the application via Traefik ingress.
 
 base: ubuntu@24.04
 platforms:
@@ -34,32 +34,62 @@ parts:
     source: .
     plugin: uv
     build-snaps:
-    - astral-uv
+      - astral-uv
+
 containers:
-  httpbin:
-    resource: httpbin-image
+  frappe-hrms:
+    resource: frappe-hrms-image
 
-# This field populates the Resources tab on Charmhub.
 resources:
-  # An OCI image resource for each container listed above.
-  # You may remove this if your charm will run without a workload sidecar container.
-  httpbin-image:
+  frappe-hrms-image:
     type: oci-image
-    description: OCI image for httpbin
-    # The upstream-source field is ignored by Juju. It is included here as a reference
-    # so the integration testing suite knows which image to deploy during testing. This field
-    # is also used by the 'canonical/charming-actions' Github action for automated releasing.
-    upstream-source: kennethreitz/httpbin
+    description: |
+      Frappe HRMS OCI image built with rockcraft. Contains Frappe Framework v15,
+      ERPNext v15, and HRMS with all runtime dependencies.
+    upstream-source: ghcr.io/canonical/frappe-hrms:latest
 
-# See https://canonical-charmcraft.readthedocs-hosted.com/stable/reference/files/config-yaml-file/
-# for guidance.
+requires:
+  postgresql:
+    interface: postgresql_client
+    limit: 1
+  redis:
+    interface: redis
+    limit: 1
+  ingress:
+    interface: ingress
+    limit: 1
+
 config:
   options:
-    # An example config option to customise the log level of the workload
-    log-level:
-      description: |
-        Configures the log level of gunicorn. 
-
-        Acceptable values are: "info", "debug", "warning", "error" and "critical"
-      default: "info"
+    site-name:
       type: string
+      description: |
+        The Frappe site name. This is typically the hostname through which
+        the application will be accessed (e.g., hrms.example.com). The site
+        name is used when creating the Frappe site and in the nginx configuration.
+      default: ""
+    admin-password:
+      type: string
+      description: |
+        Password for the Frappe "Administrator" account. Required for initial
+        site creation. After setup, this can be changed from within Frappe.
+      default: ""
+    proxy-read-timeout:
+      type: int
+      description: |
+        Nginx proxy read timeout in seconds. Increase for long-running operations
+        such as large payroll runs or data imports.
+      default: 120
+    client-max-body-size:
+      type: string
+      description: |
+        Maximum allowed size of the client request body for nginx. Use standard
+        nginx size notation (e.g., 50m, 100m, 1g). Increase for large file uploads.
+      default: "50m"
+    initial-db-name:
+      type: string
+      description: |
+        Override for the initial database name. If empty, the database name is
+        derived from the site name by replacing hyphens and dots with underscores.
+        Only used during initial site creation.
+      default: ""

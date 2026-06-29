@@ -7,71 +7,71 @@ Avoid using this README file for information that is maintained or published els
 
 Use links instead.
 -->
-# Platform engineering charm template
+# Frappe HRMS Operator
 <!-- Use this space for badges -->
 
-Describe your charm in 1-2 sentences. Include the software that the charm deploys (if applicable), and the substrate (VM/K8s).
+Frappe HRMS is an open-source, modern HR and payroll application built on the Frappe Framework. This charm deploys Frappe HRMS on Kubernetes, integrating with PostgreSQL, Redis, and Traefik ingress.
 
-Like any Juju charm, this charm supports one-line deployment, configuration, integration, scaling, and more. For Charmed {Name}, this includes:
-* list or summary of app-specific features
+Like any Juju charm, this charm supports one-line deployment, configuration, integration, scaling, and more. For Charmed Frappe HRMS, this includes:
+* Employee lifecycle management (onboarding, transfers, exit)
+* Leave and attendance management
+* Expense claims and payroll processing
+* Performance management
+* Integration with PostgreSQL (via data-platform-libs), Redis, and Traefik ingress
 
-For information about how to deploy, integrate, and manage this charm, see the Official [platform-engineering-charm-template Documentation](external link).
+For information about how to deploy, integrate, and manage this charm, see the Official [Frappe HRMS Documentation](https://docs.frappe.io/hr).
 
 ## Get started
-<!--If the charm already contains a relevant how-to guide or tutorial in its documentation,
-use this section to link the documentation. You don’t need to duplicate documentation here.
-If the tutorial is more complex than getting started, then provide brief descriptions of the
-steps needed for the simplest possible deployment. Make sure to include software and hardware
-prerequisites.
 
-This section could be structured in the following way:
+### Prerequisites
 
-### Set up
-<Steps for setting up the environment (e.g. via Multipass)>
+* A Juju controller connected to a Kubernetes cluster
+* The following charms available: `postgresql-k8s`, `redis-k8s`, `traefik-k8s`
 
 ### Deploy
-<Steps for deploying the charm>
 
--->
+```bash
+juju deploy frappe-hrms --resource frappe-hrms-image=ghcr.io/canonical/frappe-hrms:latest
+juju config frappe-hrms site-name=hrms.example.com admin-password=<password>
+juju integrate frappe-hrms postgresql-k8s
+juju integrate frappe-hrms redis-k8s
+juju integrate frappe-hrms traefik-k8s
+```
 
 ### Basic operations
-<!--Brief walkthrough of performing standard configurations or operations.
 
-Use this section is to emphasize features or capabilities of the charm.
-Link to any relevant how-to guides here.
+**Change nginx proxy timeout:**
 
-Use this section to provide information on important actions, required configurations, or
-other operations the user should know about. You don’t need to list every action or configuration.
-Link the Charmhub documentation for actions and configurations if you write about them.
+```bash
+juju config frappe-hrms proxy-read-timeout=300
+```
 
-You may also want to link to the `charmcraft.yaml` file here.
--->
+**Change the maximum upload size:**
 
-## Integrations (optional)
-<!-- Information about particularly relevant interfaces, endpoints or libraries related to the
-charm. For example, peer relation endpoints required by other charms for integration.
+```bash
+juju config frappe-hrms client-max-body-size=100m
+```
 
-Otherwise, include a link the Charmhub documentation on integrations.
---> 
+## Integrations
+
+| Relation | Interface | Role | Description |
+|----------|-----------|------|-------------|
+| `postgresql` | `postgresql_client` | requires | PostgreSQL database (via data-platform-libs) |
+| `redis` | `redis` | requires | Redis for caching, queues, and Socket.IO |
+| `ingress` | `ingress` | requires | Traefik ingress for external access |
 
 ## Learn more
-<!-- 
-Provide a list of resources, including the official documentation, developer documentation,
-an official website for the software and a troubleshooting guide. Note that this list is not
-exhaustive or always relevant for every charm. If there is no official troubleshooting guide,
-include a link to the relevant Matrix channel.
--->
 
-* [Read more](charm docs) <!--Link to the charm's official documentation-->
-* [Developer documentation](developer docs) <!--Link to any developer documentation (could be upstream)-->
-* [Official webpage](official site) <!--(Optional) Link to official upstream webpage/blog/marketing content--> 
-* [Troubleshooting](link to troubleshooting docs) <!--(Optional) Link to a page or section about troubleshooting/FAQ-->
+* [Frappe HRMS Documentation](https://docs.frappe.io/hr)
+* [Frappe Framework](https://frappeframework.com)
+* [Issues](https://github.com/canonical/hrms-operator/issues)
+* [Contributing](CONTRIBUTING.md)
+* [Matrix](https://matrix.to/#/#charmhub-platform:ubuntu.com)
 
 ## Project and community
-* [Issues](github issues) <!--Link to GitHub issues (if applicable)-->
-* [Contributing](contribution guide) <!--Link to any contribution guides, preferably for the source code--> 
-* [Matrix](applicable link) <!--Link to contact info (if applicable), e.g. Matrix channel-->
-* [Launchpad](applicable link) <!--Link to Launchpad (if applicable)-->
 
-## Licensing and trademark (optional)
+* [Issues](https://github.com/canonical/hrms-operator/issues)
+* [Contributing](CONTRIBUTING.md)
+* [Matrix](https://matrix.to/#/#charmhub-platform:ubuntu.com)
+* [Launchpad](https://launchpad.net/~canonical-is-devops)
 

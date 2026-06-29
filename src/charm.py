@@ -1,107 +1,236 @@
-#!/usr/bin/env python3
-
 # Copyright 2025 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-# Learn more at: https://documentation.ubuntu.com/juju/3.6/howto/manage-charms/#build-a-charm
+"""Frappe HRMS Kubernetes Charm.
 
-"""Charm the service.
+Implements the holistic (reconciler) pattern: every interesting Juju event
+is routed to :meth:`FrappeHRMSCharm._reconcile`, which reads all state,
+computes the desired world, and writes it out. No ``defer`` is used.
 
-Refer to the following post for a quick-start guide that will help you
-develop a new k8s charm using the Operator Framework:
+Architecture:
+  * ``state.py``    - runtime state abstraction (CharmState, Pydantic)
+  * ``workload.py`` - all pebble / exec interactions (FrappeWorkload)
+  * ``charm.py``    - Juju event wiring and orchestration (this file)
 
-https://discourse.charmhub.io/t/4208
+Relations:
+  * ``postgresql`` (requires) - PostgreSQL via data-platform-libs
+  * ``redis``      (requires) - Redis via redis-k8s lib
+  * ``ingress``    (requires) - Traefik ingress via traefik-k8s lib
 """
 
 import logging
-import typing
 
 import ops
-from ops import pebble
+from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
+from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
+from charms.traefik_k8s.v2.ingress import IngressPerAppRequirer
 
-# Log messages can be retrieved using juju debug-log
+from state import CharmState, InvalidConfigError, MissingRelationError
+from workload import FrappeWorkload, WorkloadError
+
 logger = logging.getLogger(__name__)
 
-VALID_LOG_LEVELS = ["info", "debug", "warning", "error", "critical"]
+CONTAINER_NAME = "frappe-hrms"
+DATABASE_RELATION = "postgresql"
+REDIS_RELATION = "redis"
+INGRESS_RELATION = "ingress"
+HTTP_PORT = 8080
 
 
-class Charm(ops.CharmBase):
-    """Charm implementing holistic reconciliation pattern.
+class FrappeHRMSCharm(ops.CharmBase):
+    """Charm for deploying Frappe HRMS on Kubernetes."""
 
-    The holistic pattern centralizes all state reconciliation logic into a single
-    reconcile method that is called from all event handlers. This ensures consistency
-    and reduces code duplication.
-    See https://documentation.ubuntu.com/ops/latest/explanation/holistic-vs-delta-charms/
-    for more information.
-    """
+    on = RedisRelationCharmEvents()  # type: ignore[assignment]
 
-    def __init__(self, *args: typing.Any):
-        """Construct.
+    def __init__(self, framework: ops.Framework) -> None:
+        """Initialise the charm, wiring up all event handlers."""
+        super().__init__(framework)
 
-        Args:
-            args: Arguments passed to the CharmBase parent constructor.
+        self._container = self.unit.get_container(CONTAINER_NAME)
+
+        # Integration helpers -------------------------------------------------
+        self._database = DatabaseRequires(
+            self,
+            relation_name=DATABASE_RELATION,
+            database_name=self._derive_db_name(),
+        )
+        self._redis = RedisRequires(self, REDIS_RELATION)
+        self._ingress = IngressPerAppRequirer(
+            self,
+            relation_name=INGRESS_RELATION,
+            port=HTTP_PORT,
+            strip_prefix=True,
+        )
+
+        # Holistic event subscription ----------------------------------------
+        # All events that may change charm state are routed to _reconcile.
+        for event in [
+            self.on[CONTAINER_NAME].pebble_ready,
+            self.on.config_changed,
+            self._database.on.database_created,
+            self._database.on.endpoints_changed,
+            self.on.redis_relation_updated,
+            self._ingress.on.ready,
+            self._ingress.on.revoked,
+        ]:
+            framework.observe(event, self._reconcile)
+
+        # upgrade-charm is handled separately (runs migration)
+        framework.observe(self.on.upgrade_charm, self._on_upgrade_charm)
+
+        # Status collection
+        framework.observe(self.on.collect_unit_status, self._on_collect_unit_status)
+
+        # Expose the HTTP port so Juju/Kubernetes knows what port to open
+        self.unit.set_ports(ops.Port("tcp", HTTP_PORT))
+
+    # ------------------------------------------------------------------
+    # Reconcile
+    # ------------------------------------------------------------------
+
+    def _reconcile(self, _: ops.EventBase) -> None:
+        """Reconcile the workload with the desired state.
+
+        Reads all state, delegates configuration to FrappeWorkload,
+        creates the Frappe site on first run, and (re)starts services.
         """
-        super().__init__(*args)
-        self.framework.observe(self.on.httpbin_pebble_ready, self._on_httpbin_pebble_ready)
-        self.framework.observe(self.on.config_changed, self._on_config_changed)
-
-    def reconcile(self) -> None:
-        """Holistic reconciliation method.
-
-        This method contains all the logic needed to reconcile the charm state.
-        It is idempotent and can be called from any event handler.
-
-        Learn more about interacting with Pebble at
-        https://documentation.ubuntu.com/juju/3.6/reference/pebble/
-        """
-        # Validate configuration
-        log_level = str(self.model.config["log-level"]).lower()
-        if log_level not in VALID_LOG_LEVELS:
-            self.unit.status = ops.BlockedStatus(f"invalid log level: '{log_level}'")
+        if not self._container.can_connect():
             return
 
-        # Get container
-        container = self.unit.get_container("httpbin")
-        if not container.can_connect():
-            self.unit.status = ops.WaitingStatus("waiting for Pebble API")
+        if not self._prerequisites_ready():
             return
 
-        # Configure and ensure workload is running
-        container.add_layer("httpbin", self._pebble_layer, combine=True)
-        container.replan()
+        try:
+            state = CharmState.from_charm(self, self._database, self._redis, self._ingress)
+        except (InvalidConfigError, MissingRelationError) as exc:
+            # Status reported via _on_collect_unit_status; no action here.
+            logger.debug("Prerequisites not satisfied: %s", exc)
+            return
 
-        logger.debug("Workload reconciled with log level: %s", log_level)
-        # Learn more about statuses in the SDK docs:
-        # https://documentation.ubuntu.com/juju/latest/reference/status/index.html
-        self.unit.status = ops.ActiveStatus()
+        workload = FrappeWorkload(self._container)
 
-    def _on_httpbin_pebble_ready(self, _: ops.PebbleReadyEvent) -> None:
-        """Handle httpbin pebble ready event."""
-        self.reconcile()
+        try:
+            workload.setup_assets()
+            config_changed = workload.configure(state)
 
-    def _on_config_changed(self, _: ops.ConfigChangedEvent) -> None:
-        """Handle changed configuration."""
-        self.reconcile()
+            site_just_created = False
+            if not workload.site_exists(state.site_name):
+                workload.create_site(state)
+                site_just_created = True
 
-    @property
-    def _pebble_layer(self) -> pebble.LayerDict:
-        """Return a dictionary representing a Pebble layer."""
-        return {
-            "summary": "httpbin layer",
-            "description": "pebble config layer for httpbin",
-            "services": {
-                "httpbin": {
-                    "override": "replace",
-                    "summary": "httpbin",
-                    "command": "gunicorn -b 0.0.0.0:80 httpbin:app -k gevent",
-                    "startup": "enabled",
-                    "environment": {
-                        "GUNICORN_CMD_ARGS": f"--log-level {self.model.config['log-level']}"
-                    },
-                }
-            },
-        }
+            if config_changed and not site_just_created:
+                workload.restart_services()
+            else:
+                workload.start_services()
+
+        except WorkloadError:
+            logger.exception("Workload reconciliation failed")
+
+    # ------------------------------------------------------------------
+    # Upgrade (refresh) handler
+    # ------------------------------------------------------------------
+
+    def _on_upgrade_charm(self, _: ops.UpgradeCharmEvent) -> None:
+        """Run bench migrate and restart services after an OCI image upgrade.
+
+        The sites/ directory is ephemeral (no PVC is defined).  On every pod
+        restart the directory is empty and the site is recreated from scratch
+        by ``_reconcile``.  Therefore this handler only runs the migration if
+        the site is already present; otherwise ``_reconcile`` will handle the
+        full site creation on the next event.
+        """
+        if not self._container.can_connect():
+            return
+
+        if not self._prerequisites_ready():
+            return
+
+        try:
+            state = CharmState.from_charm(self, self._database, self._redis, self._ingress)
+        except (InvalidConfigError, MissingRelationError) as exc:
+            logger.warning("Cannot run upgrade migration: %s", exc)
+            return
+
+        workload = FrappeWorkload(self._container)
+
+        if not workload.site_exists(state.site_name):
+            # Site will be (re)created by the next _reconcile call.
+            logger.info(
+                "Site %r not yet ready; skipping upgrade migration (will be created by reconcile)",
+                state.site_name,
+            )
+            return
+
+        try:
+            workload.setup_assets()
+            workload.configure(state)
+            workload.migrate(state.site_name)
+            workload.restart_services()
+        except WorkloadError:
+            logger.exception("Upgrade migration failed")
+
+    # ------------------------------------------------------------------
+    # Status
+    # ------------------------------------------------------------------
+
+    def _on_collect_unit_status(self, event: ops.CollectStatusEvent) -> None:
+        """Report the current unit status.
+
+        All conditions are evaluated independently; ops selects the most
+        severe status from all that are added (Blocked > Waiting > Active).
+        We return early only when subsequent checks require pebble access.
+        """
+        # Config checks do not require pebble - evaluate first so that a
+        # missing config is reported as Blocked even when pebble is not yet up.
+        site_name = str(self.config.get("site-name", "")).strip()
+        if not site_name:
+            event.add_status(ops.BlockedStatus("Required config 'site-name' is not set"))
+
+        admin_password = str(self.config.get("admin-password", "")).strip()
+        if not admin_password:
+            event.add_status(ops.BlockedStatus("Required config 'admin-password' is not set"))
+
+        if not self._container.can_connect():
+            event.add_status(ops.WaitingStatus("Waiting for Pebble to be ready"))
+            # Cannot check workload or relation state without pebble; stop here.
+            return
+
+        if not self._database.is_resource_created():
+            event.add_status(ops.BlockedStatus(f"Waiting for '{DATABASE_RELATION}' integration"))
+
+        if not self._redis.url:
+            event.add_status(ops.BlockedStatus(f"Waiting for '{REDIS_RELATION}' integration"))
+
+        if site_name:
+            workload = FrappeWorkload(self._container)
+            if not workload.site_exists(site_name):
+                event.add_status(ops.WaitingStatus("Initialising Frappe site"))
+
+        event.add_status(ops.ActiveStatus())
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _prerequisites_ready(self) -> bool:
+        """Return True if the minimum prerequisites for reconciliation are met."""
+        return (
+            self._container.can_connect()
+            and bool(str(self.config.get("site-name", "")).strip())
+            and bool(str(self.config.get("admin-password", "")).strip())
+            and self._database.is_resource_created()
+            and bool(self._redis.url)
+        )
+
+    def _derive_db_name(self) -> str:
+        """Derive a database name from the site-name config or app name."""
+        import re
+
+        site_name = str(self.config.get("site-name", "")).strip()
+        if site_name:
+            return re.sub(r"[.\-]", "_", site_name)
+        return re.sub(r"[.\-]", "_", self.app.name)
 
 
 if __name__ == "__main__":  # pragma: nocover
-    ops.main(Charm)
+    ops.main(FrappeHRMSCharm)
