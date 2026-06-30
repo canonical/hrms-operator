@@ -56,6 +56,10 @@ requires:
     interface: ingress
     limit: 1
 
+peers:
+  hrms-peers:
+    interface: hrms-peers
+
 config:
   options:
     site-name:
@@ -65,9 +69,36 @@ config:
         the application will be accessed (e.g., hrms.example.com). The site
         name is used when creating the Frappe site and in the nginx configuration.
       default: ""
-    admin-password:
-      type: string
-      description: |
-        Password for the Frappe "Administrator" account. Required for initial
-        site creation. After setup, this can be changed from within Frappe.
-      default: ""
+
+actions:
+  get-admin-credentials:
+    description: |
+      Return the auto-generated admin credentials for the Frappe HRMS site.
+      The password is generated during initial site creation and stored in
+      the peer relation data.
+  create-user:
+    description: |
+      Create a new user on the Frappe HRMS site.
+    params:
+      email:
+        type: string
+        description: Email address for the new user (used as the login).
+      first-name:
+        type: string
+        description: First name of the new user.
+      last-name:
+        type: string
+        description: Last name of the new user.
+        default: ""
+      password:
+        type: string
+        description: Password for the new user. If not specified, a random password is generated.
+        default: ""
+      role:
+        type: string
+        description: |
+          Role to assign to the user (e.g., "HR Manager", "HR User",
+          "System Manager"). If not specified, the user is created with the
+          default "All" role.
+        default: ""
+    required: [email, first-name]

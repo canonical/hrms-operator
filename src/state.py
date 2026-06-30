@@ -83,7 +83,6 @@ class CharmState(pydantic.BaseModel):
 
     # Frappe site configuration
     site_name: str
-    admin_password: str
 
     # Integration data (None if not yet available)
     database: Optional[DatabaseConfig] = None
@@ -116,17 +115,12 @@ class CharmState(pydantic.BaseModel):
         if not site_name:
             raise InvalidConfigError("site-name")
 
-        admin_password = str(charm.config.get("admin-password", "")).strip()
-        if not admin_password:
-            raise InvalidConfigError("admin-password")
-
         database = cls._collect_database(database_requirer, site_name)
         redis = cls._collect_redis(redis_requirer)
         external_host = cls._collect_ingress_host(ingress_requirer)
 
         return cls(
             site_name=site_name,
-            admin_password=admin_password,
             database=database,
             redis=redis,
             external_host=external_host,

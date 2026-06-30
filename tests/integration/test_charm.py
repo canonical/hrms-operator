@@ -23,7 +23,6 @@ REDIS_APP = "redis-k8s"
 TRAEFIK_APP = "traefik-k8s"
 FRAPPE_APP = "frappe-hrms"
 SITE_NAME = "frappe-hrms"
-ADMIN_PASSWORD = "TestPass123!"
 
 # Frappe site creation (bench new-site + install erpnext + install hrms) can
 # take up to 20 minutes on a freshly provisioned cluster.
@@ -38,18 +37,18 @@ def test_deploy(charm: str, frappe_hrms_image: str, juju: jubilant.Juju):
          and wire up all integrations.
     assert: All applications reach active/idle within the timeout.
     """
-    juju.deploy(MARIADB_APP, channel="latest/stable", trust=True)
-    juju.deploy(REDIS_APP, channel="latest/stable", trust=True)
+    juju.deploy(MARIADB_APP, channel="latest/edge", trust=True)
+    juju.deploy(REDIS_APP, channel="latest/edge", trust=True)
     juju.deploy(
         TRAEFIK_APP,
         channel="latest/stable",
-        config={"routing_mode": "subdomain"},
+        config={"routing_mode": "subdomain", "external_hostname": "hrms.local"},
         trust=True,
     )
     juju.deploy(
         charm,
         app=FRAPPE_APP,
-        config={"site-name": SITE_NAME, "admin-password": ADMIN_PASSWORD},
+        config={"site-name": SITE_NAME},
         resources={"hrms-image": frappe_hrms_image},
         trust=True,
     )
@@ -87,28 +86,75 @@ def test_all_active_idle(juju: jubilant.Juju):
 def test_webpage_accessible(juju: jubilant.Juju):
     """
     arrange: All charms active/idle, Traefik ingress configured with subdomain routing.
-    act: HTTP GET the ingress URL for the HRMS app.
+    act: HTTP GET the ingress URL published in the ingress relation data.
     assert: The response is not a server error (< 500), confirming the
             Frappe frontend is reachable through the ingress.
     """
-    status = juju.status()
-    model_name = juju.model or "test"
+    import json as json_mod
 
-    # With subdomain routing, the URL is http://<model>-<app>.<traefik-lb-ip>.nip.io/
-    # nip.io resolves <anything>.<ip>.nip.io → <ip>, works for private IPs too.
-    traefik_address = status.apps[TRAEFIK_APP].address
-    if not traefik_address:
-        traefik_units = status.apps[TRAEFIK_APP].units
-        if traefik_units:
-            unit = next(iter(traefik_units.values()))
-            traefik_address = unit.public_address or unit.address
-    assert traefik_address, "Could not determine Traefik address from status"
+    # Read the ingress URL from the relation data published by Traefik.
+    output = juju.cli("show-unit", "--format", "json", f"{FRAPPE_APP}/0")
+    unit_data = json_mod.loads(output)[f"{FRAPPE_APP}/0"]
 
-    url = f"http://{model_name}-{FRAPPE_APP}.{traefik_address}.nip.io/"
+    url = None
+    for rel in unit_data.get("relation-info", []):
+        if rel.get("endpoint") == "ingress":
+            app_data = rel.get("application-data", {})
+            ingress_raw = app_data.get("ingress", "")
+            if ingress_raw:
+                ingress_parsed = json_mod.loads(ingress_raw)
+                url = ingress_parsed.get("url")
+            break
 
+    assert url, "Ingress URL not found in relation data"
     logger.info("Checking HRMS webpage at %s", url)
-    response = requests.get(url, allow_redirects=True, timeout=30)
+
+    # Resolve the ingress hostname to the Traefik unit address since the
+    # external_hostname is not DNS-resolvable in CI.
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    status = juju.status()
+    traefik_units = status.apps[TRAEFIK_APP].units
+    traefik_ip = next(iter(traefik_units.values())).address
+    direct_url = f"{parsed.scheme}://{traefik_ip}:{parsed.port or 80}{parsed.path}"
+
+    response = requests.get(
+        direct_url,
+        headers={"Host": parsed.hostname},
+        allow_redirects=True,
+        timeout=30,
+    )
     logger.info("Response: %s %s", response.status_code, response.url)
     assert response.status_code < 500, (
         f"Expected non-5xx response from {url}, got HTTP {response.status_code}"
     )
+
+
+@pytest.mark.abort_on_fail
+def test_get_admin_credentials(juju: jubilant.Juju):
+    """
+    arrange: HRMS charm is active with a created site.
+    act: Run the get-admin-credentials action.
+    assert: The action returns a username and a non-empty password.
+    """
+    task = juju.run(f"{FRAPPE_APP}/leader", "get-admin-credentials")
+    assert task.results["username"] == "Administrator"
+    assert len(task.results["password"]) > 0
+    logger.info("Admin credentials retrieved successfully")
+
+
+def test_create_user(juju: jubilant.Juju):
+    """
+    arrange: HRMS charm is active with a created site.
+    act: Run the create-user action with an email and first name.
+    assert: The action succeeds and returns the email and a password.
+    """
+    task = juju.run(
+        f"{FRAPPE_APP}/leader",
+        "create-user",
+        {"email": "testuser@example.com", "first-name": "Test", "last-name": "User"},
+    )
+    assert task.results["email"] == "testuser@example.com"
+    assert len(task.results["password"]) > 0
+    logger.info("User created successfully: %s", task.results["email"])

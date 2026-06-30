@@ -130,7 +130,7 @@ class FrappeWorkload:
         except ops.pebble.ExecError:
             return False
 
-    def create_site(self, state: CharmState) -> None:
+    def create_site(self, state: CharmState, admin_password: str) -> None:
         """Create a new Frappe site and install the erpnext and hrms apps.
 
         The mariadb-k8s charm (data-platform-libs) provisions a dedicated
@@ -144,6 +144,10 @@ class FrappeWorkload:
         3. Install the ``erpnext`` app (required by HRMS v16).
         4. Install the ``hrms`` app.
         5. Write a sentinel file so :meth:`site_exists` reports success.
+
+        Args:
+            state: The current charm state.
+            admin_password: The auto-generated admin password for the site.
 
         Raises:
             WorkloadError: If any bench command fails.
@@ -184,7 +188,7 @@ class FrappeWorkload:
                     "--db-password",
                     db.password,
                     "--admin-password",
-                    state.admin_password,
+                    admin_password,
                     state.site_name,
                 ],
                 working_dir=BENCH_DIR,
@@ -232,6 +236,58 @@ class FrappeWorkload:
             user="frappe",
             make_dirs=True,
         )
+
+    def create_user(
+        self,
+        site_name: str,
+        email: str,
+        first_name: str,
+        last_name: str = "",
+        password: str = "",
+        role: str = "",
+    ) -> None:
+        """Create a new Frappe user on the site.
+
+        Args:
+            site_name: The Frappe site name.
+            email: Email address for the new user.
+            first_name: First name.
+            last_name: Last name (optional).
+            password: Password (optional, Frappe generates one if empty).
+            role: Role to assign (optional).
+
+        Raises:
+            WorkloadError: If the bench command fails.
+        """
+        cmd = [
+            BENCH_BIN,
+            "--site",
+            site_name,
+            "add-user",
+            email,
+            "--first-name",
+            first_name,
+        ]
+        if last_name:
+            cmd.extend(["--last-name", last_name])
+        if password:
+            cmd.extend(["--password", password])
+        if role:
+            cmd.extend(["--add-role", role])
+
+        logger.info("Creating user %r on site %r", email, site_name)
+        try:
+            stdout, _ = self._container.exec(
+                cmd,
+                working_dir=BENCH_DIR,
+                user="frappe",
+                timeout=120,
+            ).wait_output()
+            logger.info("add-user: %s", stdout[:3000])
+        except ops.pebble.ExecError as exc:
+            raise WorkloadError(
+                f"Failed to create user {email!r} on {site_name!r}: {exc}"
+            ) from exc
 
     def migrate(self, site_name: str) -> None:
         """Run bench migrate for the site (used on upgrade-charm).

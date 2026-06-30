@@ -13,7 +13,6 @@ from charm import HRMSCharm
 
 CONTAINER = "frappe-hrms"
 SITE_NAME = "hrms.example.com"
-ADMIN_PASSWORD = "secret123"
 BENCH = "/home/frappe/frappe-bench"
 
 _OK = ops.testing.ExecResult(exit_code=0)
@@ -31,7 +30,6 @@ _NGINX_TEMPLATE = (
 def make_harness(
     *,
     site_name: str = SITE_NAME,
-    admin_password: str = ADMIN_PASSWORD,
     site_exists: bool = False,
 ) -> ops.testing.Harness:
     """Create and configure a Harness instance with exec handlers registered."""
@@ -39,7 +37,6 @@ def make_harness(
     harness.update_config(
         {
             "site-name": site_name,
-            "admin-password": admin_password,
         }
     )
 
@@ -60,7 +57,7 @@ def make_harness(
         [f"{BENCH}/env/bin/bench", "new-site"],
         result=ops.testing.ExecResult(exit_code=0, stdout="Site created"),
     )
-    # bench --site <site> install-app / migrate
+    # bench --site <site> install-app / migrate / add-user
     harness.handle_exec(
         CONTAINER,
         [f"{BENCH}/env/bin/bench", "--site"],
@@ -145,19 +142,11 @@ def add_ingress_relation(
 class TestBlockedStatus:
     def test_blocked_without_site_name(self):
         harness = ops.testing.Harness(HRMSCharm)
-        harness.update_config({"site-name": "", "admin-password": "pwd"})
+        harness.update_config({"site-name": ""})
         harness.begin()
         harness.charm.on.config_changed.emit()
         assert isinstance(harness.model.unit.status, ops.BlockedStatus)
         assert "site-name" in harness.model.unit.status.message
-
-    def test_blocked_without_admin_password(self):
-        harness = ops.testing.Harness(HRMSCharm)
-        harness.update_config({"site-name": SITE_NAME, "admin-password": ""})
-        harness.begin()
-        harness.charm.on.config_changed.emit()
-        assert isinstance(harness.model.unit.status, ops.BlockedStatus)
-        assert "admin-password" in harness.model.unit.status.message
 
     def test_waiting_for_pebble_when_config_ok(self):
         harness = make_harness()
@@ -186,6 +175,7 @@ class TestBlockedStatus:
         """Reconcile creates the site when it doesn't exist and ends up Active."""
         harness = make_harness(site_exists=False)
         harness.begin()
+        harness.add_relation("hrms-peers", "frappe-hrms")
         add_mysql_relation(harness)
         add_redis_relation(harness)
         _populate_nginx_template(harness)
@@ -196,6 +186,7 @@ class TestBlockedStatus:
     def test_active_when_site_exists(self):
         harness = make_harness(site_exists=True)
         harness.begin()
+        harness.add_relation("hrms-peers", "frappe-hrms")
         add_mysql_relation(harness)
         add_redis_relation(harness)
         _populate_nginx_template(harness)
@@ -371,7 +362,7 @@ class TestCharmState:
         from state import CharmState, InvalidConfigError
 
         harness = ops.testing.Harness(HRMSCharm)
-        harness.update_config({"site-name": "", "admin-password": "pw"})
+        harness.update_config({"site-name": ""})
         harness.begin()
         add_mysql_relation(harness)
         add_redis_relation(harness)
@@ -384,24 +375,6 @@ class TestCharmState:
                 harness.charm._ingress,
             )
         assert exc_info.value.key == "site-name"
-
-    def test_state_raises_on_missing_admin_password(self):
-        from state import CharmState, InvalidConfigError
-
-        harness = ops.testing.Harness(HRMSCharm)
-        harness.update_config({"site-name": SITE_NAME, "admin-password": ""})
-        harness.begin()
-        add_mysql_relation(harness)
-        add_redis_relation(harness)
-
-        with pytest.raises(InvalidConfigError) as exc_info:
-            CharmState.from_charm(
-                harness.charm,
-                harness.charm._database,
-                harness.charm._redis,
-                harness.charm._ingress,
-            )
-        assert exc_info.value.key == "admin-password"
 
     def test_state_database_config_parsed(self):
         from state import CharmState
@@ -490,9 +463,86 @@ class TestCharmState:
 
         state = CharmState(
             site_name="test.com",
-            admin_password="pw",
             database=DatabaseConfig(host="h", user="u", password="p", database="db"),
             redis=RedisConfig(host="r"),
         )
         with pytest.raises(pydantic.ValidationError):
             state.site_name = "other"  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Tests: actions
+# ---------------------------------------------------------------------------
+
+
+class TestActions:
+    def _setup_active_harness(self) -> ops.testing.Harness:
+        """Return a harness with site created and charm active."""
+        harness = make_harness(site_exists=True)
+        harness.begin()
+        peer_id = harness.add_relation("hrms-peers", "frappe-hrms")
+        harness.update_relation_data(
+            peer_id, "frappe-hrms", {"admin-password": "stored-pw-123"}
+        )
+        add_mysql_relation(harness)
+        add_redis_relation(harness)
+        _populate_nginx_template(harness)
+        harness.set_can_connect(CONTAINER, True)
+        harness.container_pebble_ready(CONTAINER)
+        return harness
+
+    def test_get_admin_credentials(self):
+        harness = self._setup_active_harness()
+        harness.run_action("get-admin-credentials")
+
+    def test_get_admin_credentials_fails_without_password(self):
+        harness = make_harness(site_exists=True)
+        harness.begin()
+        harness.add_relation("hrms-peers", "frappe-hrms")
+        add_mysql_relation(harness)
+        add_redis_relation(harness)
+        _populate_nginx_template(harness)
+        harness.set_can_connect(CONTAINER, True)
+        harness.container_pebble_ready(CONTAINER)
+
+        with pytest.raises(ops.testing.ActionFailed):
+            harness.run_action("get-admin-credentials")
+
+    def test_create_user(self):
+        harness = self._setup_active_harness()
+        harness.run_action(
+            "create-user",
+            {"email": "user@example.com", "first-name": "Test"},
+        )
+
+    def test_create_user_fails_without_site(self):
+        harness = make_harness(site_exists=False)
+        harness.begin()
+        harness.add_relation("hrms-peers", "frappe-hrms")
+        add_mysql_relation(harness)
+        add_redis_relation(harness)
+        _populate_nginx_template(harness)
+        harness.set_can_connect(CONTAINER, True)
+
+        with pytest.raises(ops.testing.ActionFailed):
+            harness.run_action(
+                "create-user",
+                {"email": "user@example.com", "first-name": "Test"},
+            )
+
+    def test_admin_password_auto_generated_on_site_creation(self):
+        """When site doesn't exist, reconcile generates and stores admin password."""
+        harness = make_harness(site_exists=False)
+        harness.set_leader(True)
+        harness.begin()
+        peer_id = harness.add_relation("hrms-peers", "frappe-hrms")
+        add_mysql_relation(harness)
+        add_redis_relation(harness)
+        _populate_nginx_template(harness)
+        harness.set_can_connect(CONTAINER, True)
+        harness.container_pebble_ready(CONTAINER)
+
+        assert isinstance(harness.model.unit.status, ops.ActiveStatus)
+        peer_data = harness.get_relation_data(peer_id, "frappe-hrms")
+        assert "admin-password" in peer_data
+        assert len(peer_data["admin-password"]) == 24
