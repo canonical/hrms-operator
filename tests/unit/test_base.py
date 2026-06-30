@@ -481,9 +481,7 @@ class TestActions:
         harness = make_harness(site_exists=True)
         harness.begin()
         peer_id = harness.add_relation("hrms-peers", "frappe-hrms")
-        harness.update_relation_data(
-            peer_id, "frappe-hrms", {"admin-password": "stored-pw-123"}
-        )
+        harness.update_relation_data(peer_id, "frappe-hrms", {"admin-password": "stored-pw-123"})
         add_mysql_relation(harness)
         add_redis_relation(harness)
         _populate_nginx_template(harness)
