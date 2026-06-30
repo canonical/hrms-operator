@@ -54,6 +54,7 @@ parts:
       - libssl3
       - libffi8
       - libmysqlclient21
+      - mariadb-client
       - git
 
   # Node.js 24 LTS — required for frappe socketio.js and frontend asset builds.
