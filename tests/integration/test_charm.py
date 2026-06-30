@@ -5,7 +5,7 @@
 
 """Integration tests for the Frappe HRMS charm.
 
-These tests deploy frappe-hrms together with mariadb-k8s, redis-k8s, and
+These tests deploy frappe-hrms together with mysql-k8s, redis-k8s, and
 traefik-k8s and verify that all charms reach active/idle and the HRMS
 webpage is reachable through the Traefik ingress URL.
 """
@@ -18,7 +18,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-MARIADB_APP = "mariadb-k8s"
+MARIADB_APP = "mysql-k8s"
 REDIS_APP = "redis-k8s"
 TRAEFIK_APP = "traefik-k8s"
 FRAPPE_APP = "frappe-hrms"
@@ -34,11 +34,11 @@ DEPLOY_TIMEOUT = 30 * 60
 def test_deploy(charm: str, frappe_hrms_image: str, juju: jubilant.Juju):
     """
     arrange: An empty Juju K8s model.
-    act: Deploy frappe-hrms alongside mariadb-k8s, redis-k8s, and traefik-k8s
+    act: Deploy frappe-hrms alongside mysql-k8s, redis-k8s, and traefik-k8s
          and wire up all integrations.
     assert: All applications reach active/idle within the timeout.
     """
-    juju.deploy(MARIADB_APP, channel="latest/stable", trust=True)
+    juju.deploy(MARIADB_APP, channel="8.0/stable", trust=True)
     juju.deploy(REDIS_APP, channel="latest/stable", trust=True)
     juju.deploy(
         TRAEFIK_APP,
