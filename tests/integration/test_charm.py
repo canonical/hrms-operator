@@ -38,9 +38,14 @@ def test_deploy(charm: str, frappe_hrms_image: str, juju: jubilant.Juju):
          and wire up all integrations.
     assert: All applications reach active/idle within the timeout.
     """
-    juju.deploy(MARIADB_APP, channel="latest/edge", trust=True)
-    juju.deploy(REDIS_APP, channel="latest/edge", trust=True)
-    juju.deploy(TRAEFIK_APP, channel="latest/stable", trust=True)
+    juju.deploy(MARIADB_APP, channel="latest/stable", trust=True)
+    juju.deploy(REDIS_APP, channel="latest/stable", trust=True)
+    juju.deploy(
+        TRAEFIK_APP,
+        channel="latest/stable",
+        config={"routing_mode": "subdomain"},
+        trust=True,
+    )
     juju.deploy(
         charm,
         app=FRAPPE_APP,
@@ -81,14 +86,16 @@ def test_all_active_idle(juju: jubilant.Juju):
 @pytest.mark.abort_on_fail
 def test_webpage_accessible(juju: jubilant.Juju):
     """
-    arrange: All charms active/idle, Traefik ingress configured.
+    arrange: All charms active/idle, Traefik ingress configured with subdomain routing.
     act: HTTP GET the ingress URL for the HRMS app.
     assert: The response is not a server error (< 500), confirming the
             Frappe frontend is reachable through the ingress.
     """
     status = juju.status()
+    model_name = juju.model or "test"
 
-    # Prefer app-level address (K8s LoadBalancer IP) then fall back to pod IP.
+    # With subdomain routing, the URL is http://<model>-<app>.<traefik-lb-ip>.nip.io/
+    # nip.io resolves <anything>.<ip>.nip.io → <ip>, works for private IPs too.
     traefik_address = status.apps[TRAEFIK_APP].address
     if not traefik_address:
         traefik_units = status.apps[TRAEFIK_APP].units
@@ -97,8 +104,7 @@ def test_webpage_accessible(juju: jubilant.Juju):
             traefik_address = unit.public_address or unit.address
     assert traefik_address, "Could not determine Traefik address from status"
 
-    model_name = juju.model or "test"
-    url = f"http://{traefik_address}/{model_name}-{FRAPPE_APP}"
+    url = f"http://{model_name}-{FRAPPE_APP}.{traefik_address}.nip.io/"
 
     logger.info("Checking HRMS webpage at %s", url)
     response = requests.get(url, allow_redirects=True, timeout=30)
