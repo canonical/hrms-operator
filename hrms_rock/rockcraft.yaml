@@ -111,9 +111,10 @@ parts:
       useradd -u 33 -g 33 -r -s /usr/sbin/nologin -d /var/www www-data 2>/dev/null || true
 
       # Bootstrap pip for Python 3.14. Debian/Ubuntu disables ensurepip for
-      # system Python; use get-pip.py instead.
-      curl -sS https://bootstrap.pypa.io/get-pip.py | /usr/bin/python3.14
-      /usr/bin/python3.14 -m pip install frappe-bench
+      # system Python (PEP 668); use get-pip.py with --break-system-packages
+      # since we are inside a rock build container where there's no real system.
+      curl -sS https://bootstrap.pypa.io/get-pip.py | /usr/bin/python3.14 -- --break-system-packages
+      /usr/bin/python3.14 -m pip install --break-system-packages frappe-bench
 
       # Initialise bench — clones Frappe v16 and runs yarn install for JS deps.
       su -s /bin/bash frappe -c "
