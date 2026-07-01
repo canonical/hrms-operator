@@ -110,9 +110,9 @@ parts:
       groupadd -g 33 www-data 2>/dev/null || true
       useradd -u 33 -g 33 -r -s /usr/sbin/nologin -d /var/www www-data 2>/dev/null || true
 
-      # Bootstrap pip for Python 3.14 (ensurepip avoids the distutils import that
-      # breaks the system pip on 3.12+), then install the bench CLI globally.
-      /usr/bin/python3.14 -m ensurepip --upgrade
+      # Bootstrap pip for Python 3.14. Debian/Ubuntu disables ensurepip for
+      # system Python; use get-pip.py instead.
+      curl -sS https://bootstrap.pypa.io/get-pip.py | /usr/bin/python3.14
       /usr/bin/python3.14 -m pip install frappe-bench
 
       # Initialise bench — clones Frappe v16 and runs yarn install for JS deps.
