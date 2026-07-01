@@ -15,6 +15,7 @@ jobs:
     secrets: inherit
     with:
       working-directory: .
+      test-timeout-minutes: 90
   required_status_checks:
     name: Required Integration Test Status Checks
     runs-on: ubuntu-latest
