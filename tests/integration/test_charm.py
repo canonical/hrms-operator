@@ -29,7 +29,7 @@ DEPLOY_TIMEOUT = 30 * 60
 
 
 @pytest.mark.abort_on_fail
-def test_deploy(charm: str, frappe_hrms_image: str, juju: jubilant.Juju):
+def test_deploy(charm_path: str, resource_images: dict[str, str], juju: jubilant.Juju):
     """
     arrange: An empty Juju K8s model.
     act: Deploy frappe-hrms alongside mariadb-k8s, redis-k8s, and traefik-k8s
@@ -45,9 +45,9 @@ def test_deploy(charm: str, frappe_hrms_image: str, juju: jubilant.Juju):
         trust=True,
     )
     juju.deploy(
-        charm,
+        charm_path,
         app=FRAPPE_APP,
-        resources={"hrms-image": frappe_hrms_image},
+        resources=resource_images,
         trust=True,
     )
 

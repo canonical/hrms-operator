@@ -1,34 +1,38 @@
 # Copyright 2025 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Fixtures for charm tests."""
+"""Fixtures for charm integration tests."""
+
+from collections.abc import Generator
+
+import jubilant
+import pytest
 
 
-def pytest_addoption(parser):
-    """Parse additional pytest options.
-
-    Args:
-        parser: Pytest parser.
-    """
-    parser.addoption("--charm-file", action="store")
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Parse additional pytest options."""
+    parser.addoption(
+        "--model",
+        action="store",
+        default=None,
+        help="Juju model name.",
+    )
     parser.addoption(
         "--keep-models",
         action="store_true",
         default=False,
-        help="keep temporarily-created models",
+        help="Keep temporarily-created models after tests.",
     )
-    parser.addoption(
-        "--use-existing",
-        action="store_true",
-        default=False,
-        help="use existing models and not created models",
-    )
-    parser.addoption(
-        "--model",
-        action="store",
-        help="temporarily-created model name",
-    )
-    parser.addoption(
-        "--frappe-hrms-image",
-        help="OCI image to use for the hrms-image charm resource.",
-    )
+
+
+@pytest.fixture(scope="module")
+def juju(request: pytest.FixtureRequest) -> Generator[jubilant.Juju, None, None]:
+    """Provide a Juju instance, either for an existing model or a temporary one."""
+    model = request.config.getoption("--model")
+    if model:
+        yield jubilant.Juju(model=model)
+        return
+
+    keep = request.config.getoption("--keep-models")
+    with jubilant.temp_model(keep=keep) as j:
+        yield j
