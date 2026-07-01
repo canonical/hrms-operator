@@ -22,6 +22,7 @@ jobs:
       juju-channel: '3/stable'
       channel: '1.34-strict/stable'
       microk8s-addons: "dns metallb:10.64.140.43-10.64.140.49 rbac storage"
+      bootstrap-options: "--trust"
       with-uv: true
   integration-tests:
     uses: 
@@ -39,6 +40,7 @@ jobs:
       juju-channel: '4/stable'
       channel: '1.34-strict/stable'
       microk8s-addons: "dns metallb:10.64.140.43-10.64.140.49 rbac storage"
+      bootstrap-options: "--trust"
       with-uv: true
   allure-report:
     if: ${{ !cancelled() && github.event_name == 'schedule' }}
