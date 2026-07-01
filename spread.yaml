@@ -18,6 +18,7 @@ integration-suites:
   tests/integration/:
     pytest-arguments-template: |
       --model testing
+      -x
     working-dir: ./
     summary: integration tests
     backends:

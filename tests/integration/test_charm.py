@@ -13,7 +13,6 @@ webpage is reachable through the Traefik ingress URL.
 import logging
 
 import jubilant
-import pytest
 import requests
 
 logger = logging.getLogger(__name__)
@@ -28,7 +27,6 @@ FRAPPE_APP = "frappe-hrms"
 DEPLOY_TIMEOUT = 30 * 60
 
 
-@pytest.mark.abort_on_fail
 def test_deploy(charm_path: str, resource_images: dict[str, str], juju: jubilant.Juju):
     """
     arrange: An empty Juju K8s model.
@@ -61,7 +59,6 @@ def test_deploy(charm_path: str, resource_images: dict[str, str], juju: jubilant
     )
 
 
-@pytest.mark.abort_on_fail
 def test_all_active_idle(juju: jubilant.Juju):
     """
     arrange: All charms deployed and integrated.
@@ -80,7 +77,6 @@ def test_all_active_idle(juju: jubilant.Juju):
             )
 
 
-@pytest.mark.abort_on_fail
 def test_webpage_accessible(juju: jubilant.Juju):
     """
     arrange: All charms active/idle, Traefik ingress configured with subdomain routing.
@@ -129,7 +125,6 @@ def test_webpage_accessible(juju: jubilant.Juju):
     )
 
 
-@pytest.mark.abort_on_fail
 def test_get_admin_credentials(juju: jubilant.Juju):
     """
     arrange: HRMS charm is active with a created site.
