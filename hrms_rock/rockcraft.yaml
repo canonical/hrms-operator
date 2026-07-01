@@ -53,7 +53,7 @@ parts:
       - ca-certificates
       - libssl3
       - libffi8
-      - libmysqlclient21
+      - libmariadb3
       - mariadb-client
       - git
 
