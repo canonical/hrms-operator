@@ -3,8 +3,8 @@
 
 project: hrms-operator
 path: /home/ubuntu/proj
-kill-timeout: 60m
-warn-timeout: 1m
+kill-timeout: 110m
+warn-timeout: 5m
 backends:
   integration-test:
     type: integration-test
