@@ -108,12 +108,9 @@ class CharmState(pydantic.BaseModel):
         """Build CharmState from the live charm object and its integration helpers.
 
         Raises:
-            InvalidConfigError: When a required config option is missing.
             MissingRelationError: When a required integration is not ready.
         """
-        site_name = str(charm.config.get("site-name", "")).strip()
-        if not site_name:
-            raise InvalidConfigError("site-name")
+        site_name = re.sub(r"[.\-]", "_", charm.app.name)
 
         database = cls._collect_database(database_requirer, site_name)
         redis = cls._collect_redis(redis_requirer)

@@ -30,6 +30,5 @@ header:
   - 'docs/release-notes/artifacts/*.yaml'
   - 'uv.lock'
   - 'lib/**'
-  - 'templates/**'
   - 'hrms_rock/templates/**'
   comment: on-failure

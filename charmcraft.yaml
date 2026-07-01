@@ -5,9 +5,9 @@
 # for guidance.
 
 type: charm
-name: frappe-hrms
+name: hrms
 title: Frappe HRMS
-summary: Open Source HR and Payroll Software for Kubernetes
+summary: Open Source HR and Payroll Software
 links:
   documentation: https://docs.frappe.io/hr
   issues: https://github.com/canonical/hrms-operator/issues
@@ -15,17 +15,9 @@ links:
   contact: https://launchpad.net/~canonical-is-devops
 
 description: |
-  Frappe HRMS is an open-source, modern HR and payroll application built on
-  the Frappe Framework. It provides over 13 modules covering employee lifecycle,
-  leave and attendance management, expense claims, performance management,
-  payroll processing, and more.
+  This charm deploys Frappe HRMS on Kubernetes, integrating with MariaDB and Redis.
 
-  This charm deploys Frappe HRMS on Kubernetes, managing the gunicorn backend,
-  nginx frontend, Socket.IO websocket, background queue workers, and the
-  Frappe scheduler. It integrates with MariaDB (via data-platform-libs) and
-  Redis, and exposes the application via Traefik ingress.
-
-base: ubuntu@24.04
+base: ubuntu@26.04
 platforms:
   amd64:
 
@@ -60,15 +52,6 @@ peers:
   hrms-peers:
     interface: hrms-peers
 
-config:
-  options:
-    site-name:
-      type: string
-      description: |
-        The Frappe site name. This is typically the hostname through which
-        the application will be accessed (e.g., hrms.example.com). The site
-        name is used when creating the Frappe site and in the nginx configuration.
-      default: ""
 
 actions:
   get-admin-credentials:

@@ -22,7 +22,6 @@ MARIADB_APP = "mariadb-k8s"
 REDIS_APP = "redis-k8s"
 TRAEFIK_APP = "traefik-k8s"
 FRAPPE_APP = "frappe-hrms"
-SITE_NAME = "frappe-hrms"
 
 # Frappe site creation (bench new-site + install erpnext + install hrms) can
 # take up to 20 minutes on a freshly provisioned cluster.
@@ -48,7 +47,6 @@ def test_deploy(charm: str, frappe_hrms_image: str, juju: jubilant.Juju):
     juju.deploy(
         charm,
         app=FRAPPE_APP,
-        config={"site-name": SITE_NAME},
         resources={"hrms-image": frappe_hrms_image},
         trust=True,
     )

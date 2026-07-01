@@ -283,6 +283,7 @@ static = [
 unit = [
     { name = "coverage" },
     { name = "ops", extra = ["testing"] },
+    { name = "ops-scenario" },
     { name = "pydantic" },
     { name = "pytest" },
 ]
@@ -321,6 +322,7 @@ static = [{ name = "bandit", extras = ["toml"] }]
 unit = [
     { name = "coverage", extras = ["toml"] },
     { name = "ops", extras = ["testing"] },
+    { name = "ops-scenario" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pytest" },
 ]

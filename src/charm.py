@@ -15,7 +15,7 @@ from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
 from charms.traefik_k8s.v2.ingress import IngressPerAppRequirer
 
-from state import CharmState, InvalidConfigError, MissingRelationError
+from state import CharmState, MissingRelationError
 from workload import FrappeWorkload, WorkloadError
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ class HRMSCharm(ops.CharmBase):
         self._database = DatabaseRequires(
             self,
             relation_name=DATABASE_RELATION,
-            database_name=self._derive_db_name(),
+            database_name=self._derive_site_name(),
         )
         self._redis = RedisRequires(self, REDIS_RELATION)
         self._ingress = IngressPerAppRequirer(
@@ -74,12 +74,6 @@ class HRMSCharm(ops.CharmBase):
 
     def _reconcile(self, _: ops.EventBase) -> None:
         """Reconcile the workload with the desired state."""
-        # Config checks come first — report errors even when pebble is not ready.
-        site_name = str(self.config.get("site-name", "")).strip()
-        if not site_name:
-            self.unit.status = ops.BlockedStatus("Required config 'site-name' is not set")
-            return
-
         if not self._container.can_connect():
             self.unit.status = ops.WaitingStatus("Waiting for Pebble to be ready")
             return
@@ -94,7 +88,7 @@ class HRMSCharm(ops.CharmBase):
 
         try:
             state = CharmState.from_charm(self, self._database, self._redis, self._ingress)
-        except (InvalidConfigError, MissingRelationError) as exc:
+        except MissingRelationError as exc:
             self.unit.status = ops.BlockedStatus(str(exc))
             return
 
@@ -132,7 +126,7 @@ class HRMSCharm(ops.CharmBase):
 
         try:
             state = CharmState.from_charm(self, self._database, self._redis, self._ingress)
-        except (InvalidConfigError, MissingRelationError) as exc:
+        except MissingRelationError as exc:
             self.unit.status = ops.BlockedStatus(str(exc))
             return
 
@@ -174,11 +168,7 @@ class HRMSCharm(ops.CharmBase):
             event.fail("Pebble is not ready")
             return
 
-        site_name = str(self.config.get("site-name", "")).strip()
-        if not site_name:
-            event.fail("site-name config is not set")
-            return
-
+        site_name = self._derive_site_name()
         workload = FrappeWorkload(self._container)
         if not workload.site_exists(site_name):
             event.fail("Frappe site has not been created yet")
@@ -237,11 +227,8 @@ class HRMSCharm(ops.CharmBase):
         alphabet = string.ascii_letters + string.digits
         return "".join(secrets.choice(alphabet) for _ in range(_PASSWORD_LENGTH))
 
-    def _derive_db_name(self) -> str:
-        """Derive a database name from the site-name config or app name."""
-        site_name = str(self.config.get("site-name", "")).strip()
-        if site_name:
-            return re.sub(r"[.\-]", "_", site_name)
+    def _derive_site_name(self) -> str:
+        """Derive the Frappe site name from the app name."""
         return re.sub(r"[.\-]", "_", self.app.name)
 
 

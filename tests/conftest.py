@@ -30,6 +30,5 @@ def pytest_addoption(parser):
     )
     parser.addoption(
         "--frappe-hrms-image",
-        default="ghcr.io/canonical/frappe-hrms:latest",
         help="OCI image to use for the hrms-image charm resource.",
     )
