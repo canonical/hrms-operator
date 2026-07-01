@@ -18,6 +18,7 @@ description: |
   This charm deploys Frappe HRMS on Kubernetes, integrating with MariaDB and Redis.
 
 base: ubuntu@26.04
+build-base: ubuntu@devel
 platforms:
   amd64:
 
