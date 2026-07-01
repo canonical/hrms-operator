@@ -9,13 +9,11 @@
 # These accounts need patch/update access to Kubernetes secrets so Juju can
 # record the grant. Without this, mariadb-k8s fails in its pebble-ready hook.
 #
-# This script applies a RoleBinding that covers all service accounts in the
-# "testing" model namespace (created by juju add-model testing before this
-# script runs).
+# This script runs BEFORE "juju add-model testing", so we use a ClusterRoleBinding
+# targeting system:serviceaccounts:testing. Kubernetes RBAC evaluates bindings
+# lazily — the namespace and service accounts do not need to exist yet.
 
 set -euo pipefail
-
-MODEL_NAMESPACE="testing"
 
 kubectl apply -f - <<EOF
 apiVersion: rbac.authorization.k8s.io/v1
@@ -28,13 +26,12 @@ rules:
   verbs: ["get", "list", "watch", "patch", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
   name: juju-secret-consumer-patch-secrets
-  namespace: ${MODEL_NAMESPACE}
 subjects:
 - kind: Group
-  name: system:serviceaccounts:${MODEL_NAMESPACE}
+  name: system:serviceaccounts:testing
   apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
@@ -42,4 +39,4 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 EOF
 
-echo "RBAC applied: juju-secret-consumer service accounts can now patch secrets in ${MODEL_NAMESPACE}"
+echo "RBAC applied: juju-secret-consumer service accounts can now patch secrets"
