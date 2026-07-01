@@ -2,6 +2,7 @@
 # See LICENSE file for licensing details.
 
 name: frappe-hrms
+version: "16"
 base: ubuntu@26.04
 build-base: ubuntu@26.04
 summary: Frappe HRMS - Open Source HR and Payroll Software
