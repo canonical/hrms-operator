@@ -17,7 +17,7 @@ Like any Juju charm, this charm supports one-line deployment, configuration, int
 * Leave and attendance management
 * Expense claims and payroll processing
 * Performance management
-* Integration with MariaDB (via data-platform-libs), Redis, and ingress
+* Integration with database, message broker and ingress.
 
 For information about how to deploy, integrate, and manage this charm, see the Official [Frappe HRMS Documentation](https://docs.frappe.io/hr).
 

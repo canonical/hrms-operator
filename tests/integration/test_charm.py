@@ -22,13 +22,7 @@ REDIS_APP = "redis-k8s"
 TRAEFIK_APP = "traefik-k8s"
 FRAPPE_APP = "frappe-hrms"
 
-# Frappe site creation (bench new-site + install erpnext + install hrms) can
-# take up to 20 minutes on a freshly provisioned cluster. mariadb-k8s may
-# also need several update-status retries (every 5 min) to provision the
-# database on slow runners. On GitHub-hosted runners, image pulls for
-# mariadb-k8s/redis-k8s/traefik-k8s can take up to 60 minutes before pods
-# even start, so allow 90 minutes total.
-DEPLOY_TIMEOUT = 10 * 60
+DEPLOY_TIMEOUT = 20 * 60
 
 
 def test_deploy(charm_path: str, resource_images: dict[str, str], juju: jubilant.Juju):

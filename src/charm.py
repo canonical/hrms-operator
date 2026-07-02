@@ -21,7 +21,7 @@ from workload import FrappeWorkload, WorkloadError
 logger = logging.getLogger(__name__)
 
 CONTAINER_NAME = "frappe-hrms"
-DATABASE_RELATION = "mysql"
+DATABASE_RELATION = "mariadb"
 REDIS_RELATION = "redis"
 INGRESS_RELATION = "ingress"
 PEER_RELATION = "hrms-peers"

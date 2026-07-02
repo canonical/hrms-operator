@@ -243,7 +243,7 @@ class FrappeWorkload:
         email: str,
         first_name: str,
         last_name: str = "",
-        password: str = "",
+        password: str | None = None,
         role: str = "",
     ) -> None:
         """Create a new Frappe user on the site.
@@ -253,7 +253,7 @@ class FrappeWorkload:
             email: Email address for the new user.
             first_name: First name.
             last_name: Last name (optional).
-            password: Password (optional, Frappe generates one if empty).
+            password: Password (optional, Frappe generates one if not provided).
             role: Role to assign (optional).
 
         Raises:

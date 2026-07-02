@@ -15,6 +15,11 @@ links:
   contact: https://launchpad.net/~canonical-is-devops
 
 description: |
+  Frappe HRMS is an open-source, modern HR and payroll software built on the
+  Frappe Framework. It provides comprehensive HR management including employee
+  lifecycle, leave and attendance, expense claims, performance management, and
+  payroll processing.
+
   This charm deploys Frappe HRMS on Kubernetes, integrating with MariaDB and Redis.
 
 base: ubuntu@24.04
@@ -38,7 +43,7 @@ resources:
     description: Frappe HRMS OCI image built with rockcraft.
 
 requires:
-  mysql:
+  mariadb:
     interface: mysql_client
     limit: 1
   redis:

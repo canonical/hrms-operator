@@ -70,7 +70,7 @@ def _mysql_relation(
     database: str = "hrms_db",
 ) -> Relation:
     return Relation(
-        "mysql",
+        "mariadb",
         remote_app_name="mariadb-k8s",
         remote_app_data={
             "endpoints": f"{host}:{port}",
@@ -116,7 +116,7 @@ class TestBlockedStatus:
         state = State(containers=[c])
         out = ctx.run(ctx.on.pebble_ready(c), state)
         assert isinstance(out.unit_status, ops.BlockedStatus)
-        assert "mysql" in out.unit_status.message.lower()
+        assert "mariadb" in out.unit_status.message.lower()
 
     def test_blocked_waiting_for_redis(self):
         ctx = Context(HRMSCharm, charm_root=".")
@@ -300,7 +300,7 @@ class TestCharmState:
         state = CharmState(
             site_name="hrms_test",
             database=DatabaseConfig(
-                host="db.local", port=3306, user="u", password="p", database="db"
+                host="db.local", port=3306, user="u", password="p", database="db"  # nosec B106
             ),
             redis=RedisConfig(host="r"),
         )
@@ -318,7 +318,7 @@ class TestCharmState:
 
         state = CharmState(
             site_name="hrms_test",
-            database=DatabaseConfig(host="h", user="u", password="p", database="db"),
+            database=DatabaseConfig(host="h", user="u", password="p", database="db"),  # nosec B106
             redis=RedisConfig(host="r"),
         )
         assert state.external_host is None
@@ -349,7 +349,7 @@ class TestCharmState:
 
         state = CharmState(
             site_name="test.com",
-            database=DatabaseConfig(host="h", user="u", password="p", database="db"),
+            database=DatabaseConfig(host="h", user="u", password="p", database="db"),  # nosec B106
             redis=RedisConfig(host="r"),
         )
         with pytest.raises(pydantic.ValidationError):
