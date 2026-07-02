@@ -31,25 +31,10 @@ For information about how to deploy, integrate, and manage this charm, see the O
 ### Deploy
 
 ```bash
-juju deploy frappe-hrms --resource frappe-hrms-image=ghcr.io/canonical/frappe-hrms:latest
-juju config frappe-hrms site-name=hrms.example.com admin-password=<password>
-juju integrate frappe-hrms mariadb-k8s
-juju integrate frappe-hrms redis-k8s
-juju integrate frappe-hrms traefik-k8s
-```
-
-### Basic operations
-
-**Change nginx proxy timeout:**
-
-```bash
-juju config frappe-hrms proxy-read-timeout=300
-```
-
-**Change the maximum upload size:**
-
-```bash
-juju config frappe-hrms client-max-body-size=100m
+juju deploy hrms
+juju integrate hrms mariadb-k8s
+juju integrate hrms redis-k8s
+juju integrate hrms traefik-k8s
 ```
 
 ## Integrations
