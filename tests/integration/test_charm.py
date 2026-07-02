@@ -47,7 +47,7 @@ def test_deploy(charm_path: str, resource_images: dict[str, str], juju: jubilant
         trust=True,
     )
 
-    juju.integrate(f"{FRAPPE_APP}:mysql", f"{MARIADB_APP}:database")
+    juju.integrate(f"{FRAPPE_APP}:mariadb", f"{MARIADB_APP}:database")
     juju.integrate(f"{FRAPPE_APP}:redis", f"{REDIS_APP}:redis")
     juju.integrate(f"{FRAPPE_APP}:ingress", f"{TRAEFIK_APP}:ingress")
 

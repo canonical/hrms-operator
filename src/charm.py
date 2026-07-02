@@ -11,6 +11,7 @@ import secrets
 import string
 
 import ops
+import typing
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
 from charms.traefik_k8s.v2.ingress import IngressPerAppRequirer
@@ -34,11 +35,13 @@ class HRMSCharm(ops.CharmBase):
 
     on = RedisRelationCharmEvents()  # type: ignore[assignment]
 
-    def __init__(self, framework: ops.Framework) -> None:
-        """Initialise the charm, wiring up all event handlers."""
-        super().__init__(framework)
+    def __init__(self, *args: typing.Any):
+        """Initialize the charm and register event handlers.
 
-        self._container = self.unit.get_container(CONTAINER_NAME)
+        Args:
+            args: Arguments to initialize the charm base.
+        """
+        super().__init__(*args)
 
         self._database = DatabaseRequires(
             self,
@@ -62,11 +65,11 @@ class HRMSCharm(ops.CharmBase):
             self._ingress.on.ready,
             self._ingress.on.revoked,
         ]:
-            framework.observe(event, self._reconcile)
+            self.framework.observe(event, self._reconcile)
 
-        framework.observe(self.on.upgrade_charm, self._on_upgrade_charm)
-        framework.observe(self.on.get_admin_credentials_action, self._on_get_admin_credentials)
-        framework.observe(self.on.create_user_action, self._on_create_user)
+        self.framework.observe(self.on.upgrade_charm, self._on_upgrade_charm)
+        self.framework.observe(self.on.get_admin_credentials_action, self._on_get_admin_credentials)
+        self.framework.observe(self.on.create_user_action, self._on_create_user)
 
     # ------------------------------------------------------------------
     # Reconcile
@@ -74,6 +77,7 @@ class HRMSCharm(ops.CharmBase):
 
     def _reconcile(self, _: ops.EventBase) -> None:
         """Reconcile the workload with the desired state."""
+        self._container = self.unit.get_container(CONTAINER_NAME)
         if not self._container.can_connect():
             self.unit.status = ops.WaitingStatus("Waiting for Pebble to be ready")
             return
@@ -128,6 +132,7 @@ class HRMSCharm(ops.CharmBase):
 
     def _on_upgrade_charm(self, _: ops.UpgradeCharmEvent) -> None:
         """Run bench migrate and restart services after an OCI image upgrade."""
+        self._container = self.unit.get_container(CONTAINER_NAME)
         if not self._container.can_connect():
             self.unit.status = ops.WaitingStatus("Waiting for Pebble to be ready")
             return
@@ -163,6 +168,7 @@ class HRMSCharm(ops.CharmBase):
 
     def _on_get_admin_credentials(self, event: ops.ActionEvent) -> None:
         """Return the auto-generated admin credentials."""
+        self._container = self.unit.get_container(CONTAINER_NAME)
         password = self._get_admin_password()
         if not password:
             event.fail("Admin credentials not yet available (site not created)")
@@ -172,6 +178,7 @@ class HRMSCharm(ops.CharmBase):
 
     def _on_create_user(self, event: ops.ActionEvent) -> None:
         """Create a new user on the Frappe site."""
+        self._container = self.unit.get_container(CONTAINER_NAME)
         if not self._container.can_connect():
             event.fail("Pebble is not ready")
             return

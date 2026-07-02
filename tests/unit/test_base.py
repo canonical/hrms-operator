@@ -300,7 +300,11 @@ class TestCharmState:
         state = CharmState(
             site_name="hrms_test",
             database=DatabaseConfig(
-                host="db.local", port=3306, user="u", password="p", database="db"  # nosec B106
+                host="db.local",
+                port=3306,
+                user="u",
+                password="p",
+                database="db",  # nosec B106
             ),
             redis=RedisConfig(host="r"),
         )
