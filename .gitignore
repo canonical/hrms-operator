@@ -11,6 +11,7 @@ __pycache__/
 *.egg-info/
 */*.rock
 terraform/tests/.terraform
+.spread-reuse.*
 
 # BEGIN VALE WORKFLOW IGNORE
 .vale/styles/*

@@ -92,6 +92,14 @@ class HRMSCharm(ops.CharmBase):
             self.unit.status = ops.BlockedStatus(str(exc))
             return
 
+        if state.database is None:
+            self.unit.status = ops.BlockedStatus(f"Waiting for '{DATABASE_RELATION}' integration")
+            return
+
+        if state.redis is None:
+            self.unit.status = ops.BlockedStatus(f"Waiting for '{REDIS_RELATION}' integration")
+            return
+
         workload = FrappeWorkload(self._container)
 
         try:

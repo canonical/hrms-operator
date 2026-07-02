@@ -1,0 +1,20 @@
+version: 1
+rocks:
+- name: frappe-hrms
+  rockcraft-yaml: hrms_rock/rockcraft.yaml
+  builds:
+  - arch: amd64
+    file: ./hrms_rock/frappe-hrms_16_amd64.rock
+    image: localhost:32000/frappe-hrms:amd64-20260702-114724
+charms:
+- name: hrms
+  charmcraft-yaml: charmcraft.yaml
+  pack-dir: .
+  builds:
+  - arch: amd64
+    path: ./hrms_amd64.charm
+  resources:
+    hrms-image:
+      type: oci-image
+      rock: frappe-hrms
+snaps: []

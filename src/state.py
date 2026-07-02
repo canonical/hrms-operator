@@ -182,7 +182,13 @@ class CharmState(pydantic.BaseModel):
             logger.warning("Could not parse Redis URL: %s", url)
             return None
 
-        return RedisConfig(host=parsed.hostname, port=parsed.port or 6379)
+        try:
+            port = parsed.port
+        except ValueError:
+            logger.warning("Could not parse Redis port from URL: %s", url)
+            return None
+
+        return RedisConfig(host=parsed.hostname, port=port or 6379)
 
     @staticmethod
     def _collect_ingress_host(

@@ -2,16 +2,30 @@
 # See LICENSE file for licensing details.
 
 juju:
-  channel: 3.6/stable
+  channel: 4.0/stable
   model-defaults:
     test-mode: "true"
-    automatically-retry-hooks: "false"
+    automatically-retry-hooks: "true"
+  extra-bootstrap-args: --config agent-stream=proposed
 
 providers:
-  microk8s:
+  lxd:
+    enable: true
+  k8s:
     enable: true
     bootstrap: true
-    addons:
-      - hostpath-storage
-      - dns
-      - metallb:10.64.140.43-10.64.140.49
+    bootstrap-constraints:
+      root-disk: "2G"
+    features:
+      load-balancer:
+        l2-mode: "true"
+        cidrs: "10.43.45.0/28"
+      local-storage: {}
+      network: {}
+
+host:
+  packages:
+    - skopeo
+  snaps:
+    rockcraft:
+    charmcraft:

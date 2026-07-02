@@ -28,7 +28,7 @@ FRAPPE_APP = "frappe-hrms"
 # database on slow runners. On GitHub-hosted runners, image pulls for
 # mariadb-k8s/redis-k8s/traefik-k8s can take up to 60 minutes before pods
 # even start, so allow 90 minutes total.
-DEPLOY_TIMEOUT = 90 * 60
+DEPLOY_TIMEOUT = 10 * 60
 
 
 def test_deploy(charm_path: str, resource_images: dict[str, str], juju: jubilant.Juju):

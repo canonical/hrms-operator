@@ -42,7 +42,8 @@ parts:
       - python3.14-venv
       - libssl-dev
       - libffi-dev
-      - libmysqlclient-dev
+      - libmariadb-dev
+      - libmariadb-dev-compat
       - pkg-config
       - libjpeg-dev
       - zlib1g-dev
@@ -96,7 +97,8 @@ parts:
       - python3.14-dev
       - libssl-dev
       - libffi-dev
-      - libmysqlclient-dev
+      - libmariadb-dev
+      - libmariadb-dev-compat
       - libjpeg-dev
       - zlib1g-dev
       - pkg-config
