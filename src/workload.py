@@ -154,14 +154,6 @@ class FrappeWorkload:
         The mariadb-k8s charm (data-platform-libs) provisions a dedicated
         MariaDB user and database for the application.
 
-        Site creation steps:
-
-        1. Run ``bench new-site --no-setup-db --db-type mariadb`` to bootstrap
-           Frappe DB schema if the site doesn't already exist.
-        2. Check which apps are already installed.
-        3. Install the ``erpnext`` app if not already installed (required by HRMS v16).
-        4. Install the ``hrms`` app if not already installed.
-
         Args:
             state: The current charm state.
             admin_password: The auto-generated admin password for the site.
@@ -169,57 +161,13 @@ class FrappeWorkload:
         Raises:
             WorkloadError: If any bench command fails.
         """
-        assert state.database is not None, "Database config must be available"  # noqa: S101 # nosec B101
-        db = state.database
-
-        # 1. Bootstrap Frappe DB schema via bench new-site if the site doesn't exist.
-        #    --no-setup-db: skip MariaDB user/database creation (already done
-        #    by mariadb-k8s charm); just import framework schema and install frappe.
+        # 1. Bootstrap the site if it doesn't exist
         if not self.site_exists(state.site_name):
-            logger.info(
-                "Creating Frappe site %r via bench new-site --no-setup-db",
-                state.site_name,
-            )
-            try:
-                stdout, stderr = self._container.exec(
-                    [
-                        BENCH_BIN,
-                        "new-site",
-                        "--no-setup-db",
-                        "--db-type",
-                        "mariadb",
-                        "--db-host",
-                        db.host,
-                        "--db-port",
-                        str(db.port),
-                        "--db-name",
-                        db.database,
-                        "--db-user",
-                        db.user,
-                        "--db-password",
-                        db.password,
-                        "--admin-password",
-                        admin_password,
-                        state.site_name,
-                    ],
-                    working_dir=BENCH_DIR,
-                    user="frappe",
-                    timeout=1200,
-                ).wait_output()
-                logger.info("bench new-site: %s", self._truncate_output_tail(stdout))
-                if stderr:
-                    logger.info("bench new-site stderr: %s", self._truncate_output_tail(stderr))
-            except ops.pebble.ExecError as exc:
-                logger.error(
-                    "bench new-site failed - stdout: %s, stderr: %s",
-                    self._truncate_output_tail(exc.stdout),
-                    self._truncate_output_tail(exc.stderr),
-                )
-                raise WorkloadError(f"Failed to create site {state.site_name!r}") from exc
+            self._run_bench_new_site(state, admin_password)
         else:
             logger.info("Frappe site %r already exists", state.site_name)
 
-        # 2. Check which apps are already installed.
+        # 2. Get installed apps and install missing ones
         installed_apps = self._get_installed_apps(state.site_name)
         logger.info(
             "Apps already installed on site %r: %s",
@@ -227,55 +175,109 @@ class FrappeWorkload:
             ", ".join(installed_apps),
         )
 
-        # 3. Install ERPNext (required by HRMS v16) if not already installed.
+        # 3. Install erpnext if needed
         if "erpnext" not in installed_apps:
-            logger.info("Installing erpnext app on site %r", state.site_name)
-            try:
-                stdout, stderr = self._container.exec(
-                    [BENCH_BIN, "--site", state.site_name, "install-app", "erpnext"],
-                    working_dir=BENCH_DIR,
-                    user="frappe",
-                    timeout=1200,
-                ).wait_output()
-                logger.info("install-app erpnext: %s", self._truncate_output_tail(stdout))
-                if stderr:
-                    logger.info(
-                        "install-app erpnext stderr: %s", self._truncate_output_tail(stderr)
-                    )
-            except ops.pebble.ExecError as exc:
-                logger.error(
-                    "install-app erpnext failed - stdout: %s, stderr: %s",
-                    self._truncate_output_tail(exc.stdout),
-                    self._truncate_output_tail(exc.stderr),
-                )
-                raise WorkloadError(
-                    f"Failed to install erpnext app on {state.site_name!r}"
-                ) from exc
+            self._install_app(state.site_name, "erpnext", timeout=1200)
         else:
             logger.info("erpnext app already installed on site %r", state.site_name)
 
-        # 4. Install the hrms app if not already installed.
+        # 4. Install hrms if needed
         if "hrms" not in installed_apps:
-            logger.info("Installing hrms app on site %r", state.site_name)
-            try:
-                stdout, stderr = self._container.exec(
-                    [BENCH_BIN, "--site", state.site_name, "install-app", "hrms"],
-                    working_dir=BENCH_DIR,
-                    user="frappe",
-                    timeout=600,
-                ).wait_output()
-                logger.info("install-app hrms: %s", self._truncate_output_tail(stdout))
-                if stderr:
-                    logger.info("install-app hrms stderr: %s", self._truncate_output_tail(stderr))
-            except ops.pebble.ExecError as exc:
-                logger.error(
-                    "install-app hrms failed - stdout: %s, stderr: %s",
-                    self._truncate_output_tail(exc.stdout),
-                    self._truncate_output_tail(exc.stderr),
-                )
-                raise WorkloadError(f"Failed to install hrms app on {state.site_name!r}") from exc
+            self._install_app(state.site_name, "hrms", timeout=600)
         else:
             logger.info("hrms app already installed on site %r", state.site_name)
+
+    def _run_bench_new_site(self, state: CharmState, admin_password: str) -> None:
+        """Bootstrap a new Frappe site via bench new-site.
+
+        Args:
+            state: The current charm state with database config.
+            admin_password: The admin password for the site.
+
+        Raises:
+            WorkloadError: If the command fails.
+        """
+        assert state.database is not None  # noqa: S101 # nosec B101
+        db = state.database
+
+        logger.info(
+            "Creating Frappe site %r via bench new-site --no-setup-db",
+            state.site_name,
+        )
+        try:
+            stdout, stderr = self._container.exec(
+                [
+                    BENCH_BIN,
+                    "new-site",
+                    "--no-setup-db",
+                    "--db-type",
+                    "mariadb",
+                    "--db-host",
+                    db.host,
+                    "--db-port",
+                    str(db.port),
+                    "--db-name",
+                    db.database,
+                    "--db-user",
+                    db.user,
+                    "--db-password",
+                    db.password,
+                    "--admin-password",
+                    admin_password,
+                    state.site_name,
+                ],
+                working_dir=BENCH_DIR,
+                user="frappe",
+                timeout=1200,
+            ).wait_output()
+            logger.info("bench new-site: %s", self._truncate_output_tail(stdout))
+            if stderr:
+                logger.info("bench new-site stderr: %s", self._truncate_output_tail(stderr))
+        except ops.pebble.ExecError as exc:
+            logger.error(
+                "bench new-site failed - stdout: %s, stderr: %s",
+                self._truncate_output_tail(exc.stdout),
+                self._truncate_output_tail(exc.stderr),
+            )
+            raise WorkloadError(f"Failed to create site {state.site_name!r}") from exc
+
+    def _install_app(
+        self,
+        site_name: str,
+        app_name: str,
+        timeout: int = 1200,
+    ) -> None:
+        """Install a Frappe app on the site via bench install-app.
+
+        Args:
+            site_name: The Frappe site name.
+            app_name: The app to install (e.g., 'erpnext', 'hrms').
+            timeout: Command timeout in seconds (default: 1200).
+
+        Raises:
+            WorkloadError: If the command fails.
+        """
+        logger.info("Installing %s app on site %r", app_name, site_name)
+        try:
+            stdout, stderr = self._container.exec(
+                [BENCH_BIN, "--site", site_name, "install-app", app_name],
+                working_dir=BENCH_DIR,
+                user="frappe",
+                timeout=timeout,
+            ).wait_output()
+            logger.info("install-app %s: %s", app_name, self._truncate_output_tail(stdout))
+            if stderr:
+                logger.info(
+                    "install-app %s stderr: %s", app_name, self._truncate_output_tail(stderr)
+                )
+        except ops.pebble.ExecError as exc:
+            logger.error(
+                "install-app %s failed - stdout: %s, stderr: %s",
+                app_name,
+                self._truncate_output_tail(exc.stdout),
+                self._truncate_output_tail(exc.stderr),
+            )
+            raise WorkloadError(f"Failed to install {app_name} app on {site_name!r}") from exc
 
     def _get_installed_apps(self, site_name: str) -> list[str]:
         """Get the list of installed apps for a site.

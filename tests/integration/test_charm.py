@@ -11,6 +11,8 @@ webpage is reachable through the Traefik ingress URL.
 """
 
 import logging
+import json
+from urllib.parse import urlparse
 
 import jubilant
 import requests
@@ -86,14 +88,11 @@ def test_webpage_accessible(juju: jubilant.Juju):
     """
     arrange: All charms active/idle, Traefik ingress configured with subdomain routing.
     act: HTTP GET the ingress URL published in the ingress relation data.
-    assert: The response is not a server error (< 500), confirming the
-            Frappe frontend is reachable through the ingress.
+    assert: The response is HTTP 200, confirming the frontend is reachable through the ingress.
     """
-    import json as json_mod
-
     # Read the ingress URL from the relation data published by Traefik.
     output = juju.cli("show-unit", "--format", "json", f"{FRAPPE_APP}/0")
-    unit_data = json_mod.loads(output)[f"{FRAPPE_APP}/0"]
+    unit_data = json.loads(output)[f"{FRAPPE_APP}/0"]
 
     url = None
     for rel in unit_data.get("relation-info", []):
@@ -101,7 +100,7 @@ def test_webpage_accessible(juju: jubilant.Juju):
             app_data = rel.get("application-data", {})
             ingress_raw = app_data.get("ingress", "")
             if ingress_raw:
-                ingress_parsed = json_mod.loads(ingress_raw)
+                ingress_parsed = json.loads(ingress_raw)
                 url = ingress_parsed.get("url")
             break
 
@@ -110,8 +109,6 @@ def test_webpage_accessible(juju: jubilant.Juju):
 
     # Resolve the ingress hostname to the Traefik unit address since the
     # external_hostname is not DNS-resolvable in CI.
-    from urllib.parse import urlparse
-
     parsed = urlparse(url)
     status = juju.status()
     traefik_units = status.apps[TRAEFIK_APP].units
@@ -125,6 +122,6 @@ def test_webpage_accessible(juju: jubilant.Juju):
         timeout=30,
     )
     logger.info("Response: %s %s", response.status_code, response.url)
-    assert response.status_code < 500, (
-        f"Expected non-5xx response from {url}, got HTTP {response.status_code}"
+    assert response.status_code == 200, (
+        f"Expected HTTP 200 from {url}, got HTTP {response.status_code}"
     )

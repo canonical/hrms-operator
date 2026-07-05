@@ -67,40 +67,6 @@ class HRMSCharm(ops.CharmBase):
 
         self.framework.observe(self.on.upgrade_charm, self._on_upgrade_charm)
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
-    def _check_dependencies(self) -> ops.StatusBase | None:
-        """Check if all required relations are ready.
-
-        Returns a BlockedStatus if any dependency is missing, None if all ready.
-        """
-        if not self._database.is_resource_created():
-            return ops.BlockedStatus(f"Waiting for '{DATABASE_RELATION}' integration")
-
-        if not self._redis.url:
-            return ops.BlockedStatus(f"Waiting for '{REDIS_RELATION}' integration")
-
-        return None
-
-    def _get_charm_state(self) -> CharmState | None:
-        """Get the current charm state.
-
-        Returns the state if successful, sets status and returns None if not.
-        """
-        try:
-            state = CharmState.from_charm(self, self._database, self._redis, self._ingress)
-        except MissingRelationError as exc:
-            self.unit.status = ops.BlockedStatus(str(exc))
-            return None
-
-        return state
-
-    # ------------------------------------------------------------------
-    # Reconcile
-    # ------------------------------------------------------------------
-
     def _reconcile(self, _: ops.EventBase) -> None:
         """Reconcile the workload with the desired state."""
         self._container = self.unit.get_container(CONTAINER_NAME)
@@ -108,14 +74,10 @@ class HRMSCharm(ops.CharmBase):
             self.unit.status = ops.WaitingStatus("Waiting for Pebble to be ready")
             return
 
-        # Check dependencies and return early if not ready
-        status = self._check_dependencies()
-        if status is not None:
-            self.unit.status = status
-            return
-
-        state = self._get_charm_state()
-        if state is None:
+        try:
+            state = CharmState.from_charm(self, self._database, self._redis, self._ingress)
+        except MissingRelationError as exc:
+            self.unit.status = ops.BlockedStatus(str(exc))
             return
 
         workload = FrappeWorkload(self._container)
