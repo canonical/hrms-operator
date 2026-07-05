@@ -1,28 +1,17 @@
 # Copyright 2025 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Charm runtime state abstraction.
-
-This module abstracts all charm runtime state, providing a clean interface
-between Juju's data model and the charm/workload logic. All Juju-level state
-access (config, relation data, etc.) is contained here.
-
-See: https://discourse.charmhub.io/t/specification-isd014-managing-charm-complexity/11619
-"""
-
-from __future__ import annotations
+"""Charm runtime state abstraction."""
 
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 from urllib.parse import urlparse
 
 import ops
 import pydantic
-
-if TYPE_CHECKING:
-    from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
-    from charms.redis_k8s.v0.redis import RedisRequires
-    from charms.traefik_k8s.v2.ingress import IngressPerAppRequirer
+from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
+from charms.redis_k8s.v0.redis import RedisRequires
+from charms.traefik_k8s.v2.ingress import IngressPerAppRequirer
 
 logger = logging.getLogger(__name__)
 
@@ -83,9 +72,9 @@ class CharmState(pydantic.BaseModel):
     # Frappe site configuration
     site_name: str
 
-    # Integration data (None if not yet available)
-    database: Optional[DatabaseConfig] = None
-    redis: Optional[RedisConfig] = None
+    # Integration data (required)
+    database: DatabaseConfig
+    redis: RedisConfig
 
     # Ingress: external hostname provided by Traefik (None if no ingress)
     external_host: Optional[str] = None
@@ -109,7 +98,7 @@ class CharmState(pydantic.BaseModel):
         database_requirer: DatabaseRequires,
         redis_requirer: RedisRequires,
         ingress_requirer: IngressPerAppRequirer,
-    ) -> CharmState:
+    ) -> "CharmState":
         """Build CharmState from the live charm object and its integration helpers.
 
         Raises:
@@ -118,7 +107,13 @@ class CharmState(pydantic.BaseModel):
         site_name = charm.app.name
 
         database = cls._collect_database(database_requirer, site_name)
+        if database is None:
+            raise MissingRelationError("mariadb")
+
         redis = cls._collect_redis(redis_requirer)
+        if redis is None:
+            raise MissingRelationError("redis")
+
         external_host = cls._collect_ingress_host(ingress_requirer)
         admin_password_secret_id = (
             str(charm.config.get("admin-password-secret", "")).strip() or None
