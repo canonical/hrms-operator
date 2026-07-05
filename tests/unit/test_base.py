@@ -142,7 +142,9 @@ class TestBlockedStatus:
             leader=True,
         )
         out = ctx.run(ctx.on.pebble_ready(c), state)
-        assert out.unit_status == ops.ActiveStatus()
+        # In the test environment, services won't actually be running, so the charm
+        # will be in WaitingStatus until services become healthy
+        assert out.unit_status == ops.WaitingStatus("Waiting for services to become healthy")
 
     def test_blocked_when_no_admin_password_secret(self, templates_path: Path):
         ctx = Context(HRMSCharm, charm_root=".")
@@ -165,7 +167,8 @@ class TestBlockedStatus:
             leader=True,
         )
         out = ctx.run(ctx.on.pebble_ready(c), state)
-        assert out.unit_status == ops.ActiveStatus()
+        # In test environment, services won't be running, so charm waits for them
+        assert out.unit_status == ops.WaitingStatus("Waiting for services to become healthy")
 
 
 # ---------------------------------------------------------------------------
@@ -193,13 +196,18 @@ class TestPebbleLayer:
         for svc in ("backend", "websocket", "frontend", "queue-short", "queue-long", "scheduler"):
             assert svc in c.plan.services, f"Service {svc!r} missing from pebble plan"
 
-    def test_pebble_layer_services_all_enabled(self, templates_path: Path):
+    def test_pebble_layer_services_all_disabled(self, templates_path: Path):
+        """Services start disabled to prevent check failures during site creation.
+        
+        They are explicitly started by the charm after the site is fully
+        initialized, avoiding pebble checks running while DocTypes are updating.
+        """
         c = self._run(templates_path)
         for name in ("backend", "websocket", "frontend", "queue-short", "queue-long", "scheduler"):
             assert c.plan.services[name].startup in (
-                "enabled",
-                ops.pebble.ServiceStartup.ENABLED,
-            ), f"Service {name!r} should have startup=enabled"
+                "disabled",
+                ops.pebble.ServiceStartup.DISABLED,
+            ), f"Service {name!r} should have startup=disabled"
 
     def test_pebble_checks_no_alive_level(self, templates_path: Path):
         """level=alive is prohibited by the charm guidelines."""
@@ -316,7 +324,8 @@ class TestConfigFiles:
             leader=True,
         )
         out = ctx.run(ctx.on.pebble_ready(c), state)
-        assert out.unit_status == ops.ActiveStatus()
+        # In test environment, services won't be running, so charm waits for them
+        assert out.unit_status == ops.WaitingStatus("Waiting for services to become healthy")
 
 
 # ---------------------------------------------------------------------------
@@ -407,4 +416,5 @@ def test_admin_password_read_from_secret(templates_path: Path):
         leader=True,
     )
     out = ctx.run(ctx.on.pebble_ready(c), state)
-    assert out.unit_status == ops.ActiveStatus()
+    # In test environment, services won't be running, so charm waits for them
+    assert out.unit_status == ops.WaitingStatus("Waiting for services to become healthy")

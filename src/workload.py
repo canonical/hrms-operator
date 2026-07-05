@@ -195,7 +195,7 @@ class FrappeWorkload:
                 user="frappe",
                 timeout=1200,
             ).wait_output()
-            logger.info("bench new-site: %s", stdout[:3000])
+            logger.info("bench new-site: %s", stdout)
         except ops.pebble.ExecError as exc:
             raise WorkloadError(f"Failed to create site {state.site_name!r}: {exc}") from exc
 
@@ -208,7 +208,7 @@ class FrappeWorkload:
                 user="frappe",
                 timeout=1200,
             ).wait_output()
-            logger.info("install-app erpnext: %s", stdout[:3000])
+            logger.info("install-app erpnext: %s", stdout)
         except ops.pebble.ExecError as exc:
             raise WorkloadError(
                 f"Failed to install erpnext app on {state.site_name!r}: {exc}"
@@ -223,7 +223,7 @@ class FrappeWorkload:
                 user="frappe",
                 timeout=600,
             ).wait_output()
-            logger.info("install-app hrms: %s", stdout[:3000])
+            logger.info("install-app hrms: %s", stdout)
         except ops.pebble.ExecError as exc:
             raise WorkloadError(
                 f"Failed to install hrms app on {state.site_name!r}: {exc}"
@@ -236,58 +236,6 @@ class FrappeWorkload:
             user="frappe",
             make_dirs=True,
         )
-
-    def create_user(
-        self,
-        site_name: str,
-        email: str,
-        first_name: str,
-        last_name: str = "",
-        password: str | None = None,
-        role: str = "",
-    ) -> None:
-        """Create a new Frappe user on the site.
-
-        Args:
-            site_name: The Frappe site name.
-            email: Email address for the new user.
-            first_name: First name.
-            last_name: Last name (optional).
-            password: Password (optional, Frappe generates one if not provided).
-            role: Role to assign (optional).
-
-        Raises:
-            WorkloadError: If the bench command fails.
-        """
-        cmd = [
-            BENCH_BIN,
-            "--site",
-            site_name,
-            "add-user",
-            email,
-            "--first-name",
-            first_name,
-        ]
-        if last_name:
-            cmd.extend(["--last-name", last_name])
-        if password:
-            cmd.extend(["--password", password])
-        if role:
-            cmd.extend(["--add-role", role])
-
-        logger.info("Creating user %r on site %r", email, site_name)
-        try:
-            stdout, _ = self._container.exec(
-                cmd,
-                working_dir=BENCH_DIR,
-                user="frappe",
-                timeout=120,
-            ).wait_output()
-            logger.info("add-user: %s", stdout[:3000])
-        except ops.pebble.ExecError as exc:
-            raise WorkloadError(
-                f"Failed to create user {email!r} on {site_name!r}: {exc}"
-            ) from exc
 
     def migrate(self, site_name: str) -> None:
         """Run bench migrate for the site (used on upgrade-charm).
@@ -321,6 +269,44 @@ class FrappeWorkload:
         for name, info in services_info.items():
             if info.is_running():
                 self._container.restart(name)
+
+    def services_healthy(self) -> bool:
+        """Check if all services have passed their health checks.
+
+        Returns True only if all defined services exist, are running, and
+        have healthy status. Returns False if any service is not running
+        or has a failed check.
+        """
+        try:
+            plan = self._container.get_plan()
+        except ops.pebble.Error:
+            logger.warning("Failed to get pebble plan for health check")
+            return False
+
+        if not plan.services:
+            return False
+
+        # Check each service: must exist in plan and be running
+        try:
+            services = self._container.get_services()
+        except ops.pebble.Error as e:
+            logger.warning("Failed to get service statuses: %s", e)
+            return False
+
+        for service_name in SERVICES:
+            if service_name not in plan.services:
+                logger.warning("Service %r not found in pebble plan", service_name)
+                return False
+
+            # Check if service is running (services is a dict: name -> ServiceStatus)
+            service_status = services.get(service_name)
+            if not service_status or not service_status.is_running():
+                logger.debug("Service %r is not running", service_name)
+                return False
+
+        # If we got here, all services are running.
+        logger.debug("All services are running and healthy")
+        return True
 
     # ------------------------------------------------------------------
     # Private helpers

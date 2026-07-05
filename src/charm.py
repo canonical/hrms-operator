@@ -6,7 +6,6 @@
 """Frappe HRMS Kubernetes Charm."""
 
 import logging
-import re
 import typing
 
 import ops
@@ -43,7 +42,7 @@ class HRMSCharm(ops.CharmBase):
         self._database = DatabaseRequires(
             self,
             relation_name=DATABASE_RELATION,
-            database_name=self._derive_site_name(),
+            database_name=self.app.name,
         )
         self._redis = RedisRequires(self, REDIS_RELATION)
         self._ingress = IngressPerAppRequirer(
@@ -55,7 +54,9 @@ class HRMSCharm(ops.CharmBase):
 
         for event in [
             self.on[CONTAINER_NAME].pebble_ready,
+            self.on[CONTAINER_NAME].pebble_check_failed,
             self.on.config_changed,
+            self.on.update_status,
             self._database.on.database_created,
             self._database.on.endpoints_changed,
             self.on.redis_relation_updated,
@@ -103,26 +104,36 @@ class HRMSCharm(ops.CharmBase):
 
         try:
             workload.setup_assets()
-            config_changed = workload.configure(state)
 
-            if not workload.site_exists(state.site_name):
-                if not state.admin_password_secret_id:
+            # Create site BEFORE pushing the pebble layer to avoid service check
+            # failures during the long site initialization process.
+            site_ready = workload.site_exists(state.site_name)
+            if not site_ready:
+                if not state.admin_password:
                     self.unit.status = ops.BlockedStatus(
                         "Set 'admin-password-secret' config before initialising the site"
                     )
                     return
-                admin_password = self._get_admin_password_from_secret(
-                    state.admin_password_secret_id
-                )
                 self.unit.status = ops.WaitingStatus("Initialising Frappe site")
-                workload.create_site(state, admin_password)
+                workload.create_site(state, state.admin_password)
+                site_ready = True
 
-            if config_changed:
+            # Now that the site is ready, push the pebble layer and start services.
+            config_changed = workload.configure(state)
+
+            if config_changed or not site_ready:
                 workload.restart_services()
             else:
                 workload.start_services()
 
-            self.unit.status = ops.ActiveStatus()
+            # Check if all services are healthy before declaring active.
+            # If health checks are failing, stay in waiting status.
+            if workload.services_healthy():
+                self.unit.status = ops.ActiveStatus()
+            else:
+                self.unit.status = ops.WaitingStatus(
+                    "Waiting for services to become healthy"
+                )
 
         except WorkloadError as exc:
             self.unit.status = ops.BlockedStatus(str(exc))
@@ -163,19 +174,6 @@ class HRMSCharm(ops.CharmBase):
         except WorkloadError as exc:
             self.unit.status = ops.BlockedStatus(str(exc))
             logger.exception("Upgrade migration failed")
-
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
-
-    def _get_admin_password_from_secret(self, secret_id: str) -> str:
-        """Read the admin password from the configured Juju secret."""
-        content = self.model.get_secret(id=secret_id).get_content(refresh=True)
-        return content.get("password", "")
-
-    def _derive_site_name(self) -> str:
-        """Derive the Frappe site name from the app name."""
-        return re.sub(r"[.\-]", "_", self.app.name)
 
 
 if __name__ == "__main__":  # pragma: nocover

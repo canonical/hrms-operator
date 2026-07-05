@@ -13,7 +13,6 @@ See: https://discourse.charmhub.io/t/specification-isd014-managing-charm-complex
 from __future__ import annotations
 
 import logging
-import re
 from typing import TYPE_CHECKING, Optional
 from urllib.parse import urlparse
 
@@ -94,6 +93,9 @@ class CharmState(pydantic.BaseModel):
     # Juju secret ID for the admin password (None if not configured)
     admin_password_secret_id: Optional[str] = None
 
+    # Admin password read from the secret (None if not configured or not yet available)
+    admin_password: Optional[str] = None
+
     model_config = pydantic.ConfigDict(frozen=True)
 
     # ------------------------------------------------------------------
@@ -113,7 +115,7 @@ class CharmState(pydantic.BaseModel):
         Raises:
             MissingRelationError: When a required integration is not ready.
         """
-        site_name = re.sub(r"[.\-]", "_", charm.app.name)
+        site_name = charm.app.name
 
         database = cls._collect_database(database_requirer, site_name)
         redis = cls._collect_redis(redis_requirer)
@@ -121,6 +123,13 @@ class CharmState(pydantic.BaseModel):
         admin_password_secret_id = (
             str(charm.config.get("admin-password-secret", "")).strip() or None
         )
+        admin_password = None
+        if admin_password_secret_id:
+            try:
+                content = charm.model.get_secret(id=admin_password_secret_id).get_content(refresh=True)
+                admin_password = content.get("password", "")
+            except Exception as e:
+                logger.warning("Failed to read admin password secret: %s", e)
 
         return cls(
             site_name=site_name,
@@ -128,6 +137,7 @@ class CharmState(pydantic.BaseModel):
             redis=redis,
             external_host=external_host,
             admin_password_secret_id=admin_password_secret_id,
+            admin_password=admin_password,
         )
 
     # ------------------------------------------------------------------
@@ -159,7 +169,7 @@ class CharmState(pydantic.BaseModel):
                 port = 3306
 
             # Derive db name from site name (mariadb-k8s sets database == username).
-            db_name = data.get("database", "") or re.sub(r"[.\-]", "_", site_name)
+            db_name = data.get("database", "") or site_name
 
             # Use the username from the relation data (mariadb-k8s creates a
             # user with the same name as the database, which Frappe requires).
