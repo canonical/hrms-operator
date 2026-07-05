@@ -33,10 +33,7 @@ def test_deploy(charm_path: str, resource_images: dict[str, str], juju: jubilant
     assert: All applications reach active/idle within the timeout.
     """
     # Create a Juju secret containing the admin password.
-    secret_output = juju.cli(
-        "add-secret", "admin-password-secret", "password=test-admin-password"
-    )
-    secret_id = secret_output.strip()
+    secret_id = juju.add_secret("admin-password-secret", {"password": "test-admin-password"})
 
     juju.deploy(MARIADB_APP, channel="latest/edge", trust=True)
     juju.deploy(REDIS_APP, channel="latest/edge", trust=True)
@@ -53,6 +50,9 @@ def test_deploy(charm_path: str, resource_images: dict[str, str], juju: jubilant
         config={"admin-password-secret": secret_id},
         trust=True,
     )
+
+    # Grant the secret to the frappe-hrms charm so it can read it
+    juju.grant_secret(secret_id, FRAPPE_APP)
 
     juju.integrate(f"{FRAPPE_APP}:mariadb", f"{MARIADB_APP}:database")
     juju.integrate(f"{FRAPPE_APP}:redis", f"{REDIS_APP}:redis")
@@ -128,5 +128,3 @@ def test_webpage_accessible(juju: jubilant.Juju):
     assert response.status_code < 500, (
         f"Expected non-5xx response from {url}, got HTTP {response.status_code}"
     )
-
-
