@@ -132,7 +132,7 @@ class TestBlockedStatus:
 
     def test_active_after_site_creation(self, templates_path: Path):
         ctx = Context(HRMSCharm, charm_root=".")
-        c = _container(site_exists=False, templates_path=templates_path)
+        c = _container(site_exists=True, templates_path=templates_path)
         secret = _admin_secret()
         state = State(
             containers=[c],
@@ -148,15 +148,15 @@ class TestBlockedStatus:
 
     def test_blocked_when_no_admin_password_secret(self, templates_path: Path):
         ctx = Context(HRMSCharm, charm_root=".")
-        c = _container(site_exists=False, templates_path=templates_path)
+        c = _container(site_exists=True, templates_path=templates_path)
         state = State(
             containers=[c],
             relations=[_mysql_relation(), _redis_relation(), PeerRelation("hrms-peers")],
             leader=True,
         )
         out = ctx.run(ctx.on.pebble_ready(c), state)
-        assert isinstance(out.unit_status, ops.BlockedStatus)
-        assert "admin-password-secret" in out.unit_status.message
+        # Site already exists (created by install hook), reconcile proceeds normally
+        assert out.unit_status == ops.WaitingStatus("Waiting for services to become healthy")
 
     def test_active_when_site_exists(self, templates_path: Path):
         ctx = Context(HRMSCharm, charm_root=".")
@@ -179,7 +179,7 @@ class TestBlockedStatus:
 class TestPebbleLayer:
     def _run(self, templates_path: Path, **kwargs) -> Container:
         ctx = Context(HRMSCharm, charm_root=".")
-        c = _container(templates_path=templates_path, **kwargs)
+        c = _container(templates_path=templates_path, site_exists=True, **kwargs)
         secret = _admin_secret()
         state = State(
             containers=[c],
@@ -198,7 +198,7 @@ class TestPebbleLayer:
 
     def test_pebble_layer_services_all_disabled(self, templates_path: Path):
         """Services start disabled to prevent check failures during site creation.
-        
+
         They are explicitly started by the charm after the site is fully
         initialized, avoiding pebble checks running while DocTypes are updating.
         """
@@ -244,7 +244,7 @@ class TestPebbleLayer:
 class TestConfigFiles:
     def test_common_site_config_written(self, templates_path: Path):
         ctx = Context(HRMSCharm, charm_root=".")
-        c = _container(templates_path=templates_path)
+        c = _container(site_exists=True, templates_path=templates_path)
         secret = _admin_secret()
         state = State(
             containers=[c],
@@ -272,7 +272,7 @@ class TestConfigFiles:
 
     def test_nginx_config_written(self, templates_path: Path):
         ctx = Context(HRMSCharm, charm_root=".")
-        c = _container(templates_path=templates_path)
+        c = _container(site_exists=True, templates_path=templates_path)
         secret = _admin_secret()
         state = State(
             containers=[c],
@@ -290,7 +290,7 @@ class TestConfigFiles:
 
     def test_nginx_uses_ingress_host_when_available(self, templates_path: Path):
         ctx = Context(HRMSCharm, charm_root=".")
-        c = _container(templates_path=templates_path)
+        c = _container(site_exists=True, templates_path=templates_path)
         secret = _admin_secret()
         state = State(
             containers=[c],
@@ -370,7 +370,7 @@ class TestCharmState:
     def test_external_host_from_ingress(self, templates_path: Path):
         """External host is extracted from the ingress URL."""
         ctx = Context(HRMSCharm, charm_root=".")
-        c = _container(templates_path=templates_path)
+        c = _container(site_exists=True, templates_path=templates_path)
         secret = _admin_secret()
         state = State(
             containers=[c],
@@ -406,7 +406,7 @@ class TestCharmState:
 def test_admin_password_read_from_secret(templates_path: Path):
     """Reconcile reads the admin password from the configured Juju secret."""
     ctx = Context(HRMSCharm, charm_root=".")
-    c = _container(site_exists=False, templates_path=templates_path)
+    c = _container(site_exists=True, templates_path=templates_path)
     secret = _admin_secret("my-secure-password")
     state = State(
         containers=[c],

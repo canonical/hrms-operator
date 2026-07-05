@@ -126,7 +126,9 @@ class CharmState(pydantic.BaseModel):
         admin_password = None
         if admin_password_secret_id:
             try:
-                content = charm.model.get_secret(id=admin_password_secret_id).get_content(refresh=True)
+                content = charm.model.get_secret(id=admin_password_secret_id).get_content(
+                    refresh=True
+                )
                 admin_password = content.get("password", "")
             except Exception as e:
                 logger.warning("Failed to read admin password secret: %s", e)

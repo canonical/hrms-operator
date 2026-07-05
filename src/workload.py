@@ -10,6 +10,7 @@ module; only the container object and CharmState instances are accepted.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from typing import TYPE_CHECKING
@@ -61,6 +62,23 @@ class FrappeWorkload:
     def is_ready(self) -> bool:
         """Return True if pebble is reachable."""
         return self._container.can_connect()
+
+    @staticmethod
+    def _truncate_output_tail(output: str | None, max_chars: int = 10000) -> str:
+        """Truncate output to the last N characters if it exceeds the limit.
+
+        Args:
+            output: The output string to potentially truncate.
+            max_chars: Maximum number of characters to keep (default: 10000).
+
+        Returns:
+            The full output if it has <= max_chars, otherwise the last max_chars.
+        """
+        if output is None:
+            return "(no output)"
+        if len(output) > max_chars:
+            return output[-max_chars:]
+        return output
 
     # ------------------------------------------------------------------
     # Public API - called from charm.py
@@ -155,8 +173,9 @@ class FrappeWorkload:
         assert state.database is not None, "Database config must be available"  # noqa: S101 # nosec B101
         db = state.database
 
-        # 1. Remove existing (partial) site directory.
         site_dir = f"{SITES_DIR}/{state.site_name}"
+
+        # 1. Remove existing (partial) site directory.
         try:
             self._container.exec(["rm", "-rf", site_dir]).wait()
         except (ops.pebble.ExecError, ops.pebble.APIError) as exc:
@@ -170,7 +189,7 @@ class FrappeWorkload:
             state.site_name,
         )
         try:
-            stdout, _ = self._container.exec(
+            stdout, stderr = self._container.exec(
                 [
                     BENCH_BIN,
                     "new-site",
@@ -195,39 +214,56 @@ class FrappeWorkload:
                 user="frappe",
                 timeout=1200,
             ).wait_output()
-            logger.info("bench new-site: %s", stdout)
+            logger.info("bench new-site: %s", self._truncate_output_tail(stdout))
+            if stderr:
+                logger.info("bench new-site stderr: %s", self._truncate_output_tail(stderr))
         except ops.pebble.ExecError as exc:
-            raise WorkloadError(f"Failed to create site {state.site_name!r}: {exc}") from exc
+            logger.error(
+                "bench new-site failed - stdout: %s, stderr: %s",
+                self._truncate_output_tail(exc.stdout),
+                self._truncate_output_tail(exc.stderr),
+            )
+            raise WorkloadError(f"Failed to create site {state.site_name!r}") from exc
 
         # 3. Install ERPNext (required by HRMS v16).
         logger.info("Installing erpnext app on site %r", state.site_name)
         try:
-            stdout, _ = self._container.exec(
+            stdout, stderr = self._container.exec(
                 [BENCH_BIN, "--site", state.site_name, "install-app", "erpnext"],
                 working_dir=BENCH_DIR,
                 user="frappe",
                 timeout=1200,
             ).wait_output()
-            logger.info("install-app erpnext: %s", stdout)
+            logger.info("install-app erpnext: %s", self._truncate_output_tail(stdout))
+            if stderr:
+                logger.info("install-app erpnext stderr: %s", self._truncate_output_tail(stderr))
         except ops.pebble.ExecError as exc:
-            raise WorkloadError(
-                f"Failed to install erpnext app on {state.site_name!r}: {exc}"
-            ) from exc
+            logger.error(
+                "install-app erpnext failed - stdout: %s, stderr: %s",
+                self._truncate_output_tail(exc.stdout),
+                self._truncate_output_tail(exc.stderr),
+            )
+            raise WorkloadError(f"Failed to install erpnext app on {state.site_name!r}") from exc
 
         # 4. Install the hrms app.
         logger.info("Installing hrms app on site %r", state.site_name)
         try:
-            stdout, _ = self._container.exec(
+            stdout, stderr = self._container.exec(
                 [BENCH_BIN, "--site", state.site_name, "install-app", "hrms"],
                 working_dir=BENCH_DIR,
                 user="frappe",
                 timeout=600,
             ).wait_output()
-            logger.info("install-app hrms: %s", stdout)
+            logger.info("install-app hrms: %s", self._truncate_output_tail(stdout))
+            if stderr:
+                logger.info("install-app hrms stderr: %s", self._truncate_output_tail(stderr))
         except ops.pebble.ExecError as exc:
-            raise WorkloadError(
-                f"Failed to install hrms app on {state.site_name!r}: {exc}"
-            ) from exc
+            logger.error(
+                "install-app hrms failed - stdout: %s, stderr: %s",
+                self._truncate_output_tail(exc.stdout),
+                self._truncate_output_tail(exc.stderr),
+            )
+            raise WorkloadError(f"Failed to install hrms app on {state.site_name!r}") from exc
 
         # 5. Mark the site as fully ready so site_exists() returns True.
         self._container.push(
@@ -245,23 +281,27 @@ class FrappeWorkload:
         """
         logger.info("Running bench migrate for site %r", site_name)
         try:
-            stdout, _ = self._container.exec(
+            stdout, stderr = self._container.exec(
                 [BENCH_BIN, "--site", site_name, "migrate"],
                 working_dir=BENCH_DIR,
                 user="frappe",
             ).wait_output()
-            logger.info("Migration output: %s", stdout)
+            logger.info("Migration output: %s", self._truncate_output_tail(stdout))
+            if stderr:
+                logger.info("Migration stderr: %s", self._truncate_output_tail(stderr))
         except ops.pebble.ExecError as exc:
-            raise WorkloadError(f"Failed to migrate site {site_name!r}: {exc}") from exc
+            logger.error(
+                "Migration failed - stdout: %s, stderr: %s",
+                self._truncate_output_tail(exc.stdout),
+                self._truncate_output_tail(exc.stderr),
+            )
+            raise WorkloadError(f"Failed to migrate site {site_name!r}") from exc
 
     def start_services(self) -> None:
         """Start all workload services."""
         for service_name in SERVICES:
-            try:
+            with contextlib.suppress(ops.pebble.Error):
                 self._container.start(service_name)
-            except ops.pebble.Error:
-                # Service may already be running or not exist yet; ignore
-                pass
 
     def restart_services(self) -> None:
         """Restart all running workload services."""

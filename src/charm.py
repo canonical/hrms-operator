@@ -66,6 +66,91 @@ class HRMSCharm(ops.CharmBase):
             self.framework.observe(event, self._reconcile)
 
         self.framework.observe(self.on.upgrade_charm, self._on_upgrade_charm)
+        self.framework.observe(self.on.install, self._on_install)
+
+    # ------------------------------------------------------------------
+    # Install
+    # ------------------------------------------------------------------
+
+    def _on_install(self, _: ops.InstallEvent) -> None:
+        """Initialize the Frappe site during charm installation.
+
+        Site creation is done here (not in reconcile) because:
+        1. It only needs to run once, at charm install time
+        2. It avoids race conditions from multiple reconcile events
+        3. It's the right semantic home for initialization
+        """
+        self._container = self.unit.get_container(CONTAINER_NAME)
+        if not self._container.can_connect():
+            self.unit.status = ops.WaitingStatus("Waiting for Pebble to be ready")
+            return
+
+        # Check dependencies and return early if not ready
+        status = self._check_dependencies()
+        if status is not None:
+            self.unit.status = status
+            return
+
+        state = self._get_charm_state()
+        if state is None:
+            return
+
+        workload = FrappeWorkload(self._container)
+
+        try:
+            workload.setup_assets()
+
+            # Create site once at install time (not in reconcile)
+            if not workload.site_exists(state.site_name):
+                if not state.admin_password:
+                    self.unit.status = ops.BlockedStatus(
+                        "Set 'admin-password-secret' config before initialising the site"
+                    )
+                    return
+                self.unit.status = ops.WaitingStatus("Initialising Frappe site")
+                workload.create_site(state, state.admin_password)
+
+        except WorkloadError as exc:
+            self.unit.status = ops.BlockedStatus(str(exc))
+            logger.exception("Site initialization failed during install")
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _check_dependencies(self) -> ops.StatusBase | None:
+        """Check if all required relations are ready.
+
+        Returns a BlockedStatus if any dependency is missing, None if all ready.
+        """
+        if not self._database.is_resource_created():
+            return ops.BlockedStatus(f"Waiting for '{DATABASE_RELATION}' integration")
+
+        if not self._redis.url:
+            return ops.BlockedStatus(f"Waiting for '{REDIS_RELATION}' integration")
+
+        return None
+
+    def _get_charm_state(self) -> CharmState | None:
+        """Get the current charm state.
+
+        Returns the state if successful, sets status and returns None if not.
+        """
+        try:
+            state = CharmState.from_charm(self, self._database, self._redis, self._ingress)
+        except MissingRelationError as exc:
+            self.unit.status = ops.BlockedStatus(str(exc))
+            return None
+
+        if state.database is None:
+            self.unit.status = ops.BlockedStatus(f"Waiting for '{DATABASE_RELATION}' integration")
+            return None
+
+        if state.redis is None:
+            self.unit.status = ops.BlockedStatus(f"Waiting for '{REDIS_RELATION}' integration")
+            return None
+
+        return state
 
     # ------------------------------------------------------------------
     # Reconcile
@@ -78,26 +163,14 @@ class HRMSCharm(ops.CharmBase):
             self.unit.status = ops.WaitingStatus("Waiting for Pebble to be ready")
             return
 
-        if not self._database.is_resource_created():
-            self.unit.status = ops.BlockedStatus(f"Waiting for '{DATABASE_RELATION}' integration")
+        # Check dependencies and return early if not ready
+        status = self._check_dependencies()
+        if status is not None:
+            self.unit.status = status
             return
 
-        if not self._redis.url:
-            self.unit.status = ops.BlockedStatus(f"Waiting for '{REDIS_RELATION}' integration")
-            return
-
-        try:
-            state = CharmState.from_charm(self, self._database, self._redis, self._ingress)
-        except MissingRelationError as exc:
-            self.unit.status = ops.BlockedStatus(str(exc))
-            return
-
-        if state.database is None:
-            self.unit.status = ops.BlockedStatus(f"Waiting for '{DATABASE_RELATION}' integration")
-            return
-
-        if state.redis is None:
-            self.unit.status = ops.BlockedStatus(f"Waiting for '{REDIS_RELATION}' integration")
+        state = self._get_charm_state()
+        if state is None:
             return
 
         workload = FrappeWorkload(self._container)
@@ -105,23 +178,17 @@ class HRMSCharm(ops.CharmBase):
         try:
             workload.setup_assets()
 
-            # Create site BEFORE pushing the pebble layer to avoid service check
-            # failures during the long site initialization process.
+            # Site creation is now done in install hook, just verify it exists
             site_ready = workload.site_exists(state.site_name)
             if not site_ready:
-                if not state.admin_password:
-                    self.unit.status = ops.BlockedStatus(
-                        "Set 'admin-password-secret' config before initialising the site"
-                    )
-                    return
-                self.unit.status = ops.WaitingStatus("Initialising Frappe site")
-                workload.create_site(state, state.admin_password)
-                site_ready = True
+                # Site not ready yet (install hook may still be running or not yet called)
+                self.unit.status = ops.WaitingStatus("Waiting for Frappe site to be initialised")
+                return
 
             # Now that the site is ready, push the pebble layer and start services.
             config_changed = workload.configure(state)
 
-            if config_changed or not site_ready:
+            if config_changed:
                 workload.restart_services()
             else:
                 workload.start_services()
@@ -131,17 +198,11 @@ class HRMSCharm(ops.CharmBase):
             if workload.services_healthy():
                 self.unit.status = ops.ActiveStatus()
             else:
-                self.unit.status = ops.WaitingStatus(
-                    "Waiting for services to become healthy"
-                )
+                self.unit.status = ops.WaitingStatus("Waiting for services to become healthy")
 
         except WorkloadError as exc:
             self.unit.status = ops.BlockedStatus(str(exc))
             logger.exception("Workload reconciliation failed")
-
-    # ------------------------------------------------------------------
-    # Upgrade (refresh) handler
-    # ------------------------------------------------------------------
 
     def _on_upgrade_charm(self, _: ops.UpgradeCharmEvent) -> None:
         """Run bench migrate and restart services after an OCI image upgrade."""
