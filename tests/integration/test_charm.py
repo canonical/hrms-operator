@@ -10,8 +10,8 @@ traefik-k8s and verify that all charms reach active/idle and the HRMS
 webpage is reachable through the Traefik ingress URL.
 """
 
-import logging
 import json
+import logging
 from urllib.parse import urlparse
 
 import jubilant
