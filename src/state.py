@@ -91,6 +91,9 @@ class CharmState(pydantic.BaseModel):
     # Ingress: external hostname provided by Traefik (None if no ingress)
     external_host: Optional[str] = None
 
+    # Juju secret ID for the admin password (None if not configured)
+    admin_password_secret_id: Optional[str] = None
+
     model_config = pydantic.ConfigDict(frozen=True)
 
     # ------------------------------------------------------------------
@@ -115,12 +118,16 @@ class CharmState(pydantic.BaseModel):
         database = cls._collect_database(database_requirer, site_name)
         redis = cls._collect_redis(redis_requirer)
         external_host = cls._collect_ingress_host(ingress_requirer)
+        admin_password_secret_id = (
+            str(charm.config.get("admin-password-secret", "")).strip() or None
+        )
 
         return cls(
             site_name=site_name,
             database=database,
             redis=redis,
             external_host=external_host,
+            admin_password_secret_id=admin_password_secret_id,
         )
 
     # ------------------------------------------------------------------

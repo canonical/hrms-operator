@@ -40,7 +40,7 @@ containers:
 resources:
   hrms-image:
     type: oci-image
-    description: Frappe HRMS OCI image built with rockcraft.
+    description: Frappe HRMS OCI image.
 
 requires:
   mariadb:
@@ -53,40 +53,22 @@ requires:
     interface: ingress
     limit: 1
 
+config:
+  options:
+    admin-password-secret:
+      type: secret
+      description: |
+        Juju secret URI containing the administrator password for the Frappe
+        HRMS site. This must be set before the site is initialised.
+
+        Create a secret and grant it to the application:
+
+          juju add-secret hrms-admin-password password=<your-password>
+          juju grant-secret hrms-admin-password frappe-hrms
+          juju config frappe-hrms admin-password-secret=secret:<id>
+
+        The secret must contain a key named ``password``.
+
 peers:
   hrms-peers:
     interface: hrms-peers
-
-
-actions:
-  get-admin-credentials:
-    description: |
-      Return the auto-generated admin credentials for the Frappe HRMS site.
-      The password is generated during initial site creation and stored in
-      the peer relation data.
-  create-user:
-    description: |
-      Create a new user on the Frappe HRMS site.
-    params:
-      email:
-        type: string
-        description: Email address for the new user (used as the login).
-      first-name:
-        type: string
-        description: First name of the new user.
-      last-name:
-        type: string
-        description: Last name of the new user.
-        default: ""
-      password:
-        type: string
-        description: Password for the new user. If not specified, a random password is generated.
-        default: ""
-      role:
-        type: string
-        description: |
-          Role to assign to the user (e.g., "HR Manager", "HR User",
-          "System Manager"). If not specified, the user is created with the
-          default "All" role.
-        default: ""
-    required: [email, first-name]

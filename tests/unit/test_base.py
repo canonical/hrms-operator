@@ -9,7 +9,7 @@ from typing import Optional
 
 import ops
 import pytest
-from scenario import ActionFailed, Container, Context, Exec, Mount, PeerRelation, Relation, State
+from scenario import Container, Context, Exec, Mount, PeerRelation, Relation, Secret, State
 
 from charm import HRMSCharm
 
@@ -97,8 +97,12 @@ def _ingress_relation(*, url: str = "http://hrms.example.com") -> Relation:
     )
 
 
+def _admin_secret(password: str | None = None) -> Secret:
+    """Return a Secret fixture containing an admin password."""
+    return Secret({"password": password or "test-admin-password"})
+
+
 # ---------------------------------------------------------------------------
-# Tests: status transitions
 # ---------------------------------------------------------------------------
 
 
@@ -129,13 +133,28 @@ class TestBlockedStatus:
     def test_active_after_site_creation(self, templates_path: Path):
         ctx = Context(HRMSCharm, charm_root=".")
         c = _container(site_exists=False, templates_path=templates_path)
+        secret = _admin_secret()
+        state = State(
+            containers=[c],
+            relations=[_mysql_relation(), _redis_relation(), PeerRelation("hrms-peers")],
+            secrets=[secret],
+            config={"admin-password-secret": secret.id},
+            leader=True,
+        )
+        out = ctx.run(ctx.on.pebble_ready(c), state)
+        assert out.unit_status == ops.ActiveStatus()
+
+    def test_blocked_when_no_admin_password_secret(self, templates_path: Path):
+        ctx = Context(HRMSCharm, charm_root=".")
+        c = _container(site_exists=False, templates_path=templates_path)
         state = State(
             containers=[c],
             relations=[_mysql_relation(), _redis_relation(), PeerRelation("hrms-peers")],
             leader=True,
         )
         out = ctx.run(ctx.on.pebble_ready(c), state)
-        assert out.unit_status == ops.ActiveStatus()
+        assert isinstance(out.unit_status, ops.BlockedStatus)
+        assert "admin-password-secret" in out.unit_status.message
 
     def test_active_when_site_exists(self, templates_path: Path):
         ctx = Context(HRMSCharm, charm_root=".")
@@ -158,9 +177,12 @@ class TestPebbleLayer:
     def _run(self, templates_path: Path, **kwargs) -> Container:
         ctx = Context(HRMSCharm, charm_root=".")
         c = _container(templates_path=templates_path, **kwargs)
+        secret = _admin_secret()
         state = State(
             containers=[c],
             relations=[_mysql_relation(), _redis_relation(), PeerRelation("hrms-peers")],
+            secrets=[secret],
+            config={"admin-password-secret": secret.id},
             leader=True,
         )
         out = ctx.run(ctx.on.pebble_ready(c), state)
@@ -215,6 +237,7 @@ class TestConfigFiles:
     def test_common_site_config_written(self, templates_path: Path):
         ctx = Context(HRMSCharm, charm_root=".")
         c = _container(templates_path=templates_path)
+        secret = _admin_secret()
         state = State(
             containers=[c],
             relations=[
@@ -222,6 +245,8 @@ class TestConfigFiles:
                 _redis_relation(host="redis.local", port=6379),
                 PeerRelation("hrms-peers"),
             ],
+            secrets=[secret],
+            config={"admin-password-secret": secret.id},
             leader=True,
         )
         out = ctx.run(ctx.on.pebble_ready(c), state)
@@ -240,9 +265,12 @@ class TestConfigFiles:
     def test_nginx_config_written(self, templates_path: Path):
         ctx = Context(HRMSCharm, charm_root=".")
         c = _container(templates_path=templates_path)
+        secret = _admin_secret()
         state = State(
             containers=[c],
             relations=[_mysql_relation(), _redis_relation(), PeerRelation("hrms-peers")],
+            secrets=[secret],
+            config={"admin-password-secret": secret.id},
             leader=True,
         )
         out = ctx.run(ctx.on.pebble_ready(c), state)
@@ -255,6 +283,7 @@ class TestConfigFiles:
     def test_nginx_uses_ingress_host_when_available(self, templates_path: Path):
         ctx = Context(HRMSCharm, charm_root=".")
         c = _container(templates_path=templates_path)
+        secret = _admin_secret()
         state = State(
             containers=[c],
             relations=[
@@ -263,6 +292,8 @@ class TestConfigFiles:
                 _ingress_relation(url="http://external.example.com"),
                 PeerRelation("hrms-peers"),
             ],
+            secrets=[secret],
+            config={"admin-password-secret": secret.id},
             leader=True,
         )
         out = ctx.run(ctx.on.pebble_ready(c), state)
@@ -327,10 +358,11 @@ class TestCharmState:
         )
         assert state.external_host is None
 
-    def test_state_external_host_from_ingress(self, templates_path: Path):
+    def test_external_host_from_ingress(self, templates_path: Path):
         """External host is extracted from the ingress URL."""
         ctx = Context(HRMSCharm, charm_root=".")
         c = _container(templates_path=templates_path)
+        secret = _admin_secret()
         state = State(
             containers=[c],
             relations=[
@@ -339,6 +371,8 @@ class TestCharmState:
                 _ingress_relation(url="http://external.example.com/hrms"),
                 PeerRelation("hrms-peers"),
             ],
+            secrets=[secret],
+            config={"admin-password-secret": secret.id},
             leader=True,
         )
         out = ctx.run(ctx.on.pebble_ready(c), state)
@@ -360,82 +394,17 @@ class TestCharmState:
             state.site_name = "other"  # type: ignore[misc]
 
 
-# ---------------------------------------------------------------------------
-# Tests: actions
-# ---------------------------------------------------------------------------
-
-
-class TestActions:
-    def _active_state(
-        self, templates_path: Path, *, admin_password: Optional[str] = "stored-pw-123"
-    ) -> tuple:
-        ctx = Context(HRMSCharm, charm_root=".")
-        c = _container(site_exists=True, templates_path=templates_path)
-        local_app_data = {"admin-password": admin_password} if admin_password else {}
-        peers = PeerRelation("hrms-peers", local_app_data=local_app_data)
-        state = State(
-            containers=[c],
-            relations=[_mysql_relation(), _redis_relation(), peers],
-            leader=True,
-        )
-        return ctx, c, state
-
-    def test_get_admin_credentials(self, templates_path: Path):
-        ctx, c, state = self._active_state(templates_path)
-        out = ctx.run(ctx.on.pebble_ready(c), state)
-        ctx.run(ctx.on.action("get-admin-credentials"), out)
-        assert ctx.action_results["username"] == "Administrator"
-        assert len(ctx.action_results["password"]) > 0
-
-    def test_get_admin_credentials_fails_without_password(self, templates_path: Path):
-        ctx, c, state = self._active_state(templates_path, admin_password=None)
-        out = ctx.run(ctx.on.pebble_ready(c), state)
-        with pytest.raises(ActionFailed):
-            ctx.run(ctx.on.action("get-admin-credentials"), out)
-
-    def test_create_user(self, templates_path: Path):
-        ctx, c, state = self._active_state(templates_path)
-        out = ctx.run(ctx.on.pebble_ready(c), state)
-        ctx.run(
-            ctx.on.action(
-                "create-user", params={"email": "user@example.com", "first-name": "Test"}
-            ),
-            out,
-        )
-        assert ctx.action_results["email"] == "user@example.com"
-        assert len(ctx.action_results["password"]) > 0
-
-    def test_create_user_fails_without_site(self, templates_path: Path):
-        ctx = Context(HRMSCharm, charm_root=".")
-        c = _container(site_exists=False, templates_path=templates_path)
-        peers = PeerRelation("hrms-peers", local_app_data={"admin-password": "pw"})
-        state = State(
-            containers=[c],
-            relations=[_mysql_relation(), _redis_relation(), peers],
-            leader=True,
-        )
-        # site_exists=False but pebble_ready fires — reconcile creates the site,
-        # so run the action directly without reconcile first.
-        with pytest.raises(ActionFailed):
-            ctx.run(
-                ctx.on.action(
-                    "create-user", params={"email": "user@example.com", "first-name": "Test"}
-                ),
-                state,
-            )
-
-    def test_admin_password_auto_generated_on_site_creation(self, templates_path: Path):
-        """When site doesn't exist, reconcile generates and stores admin password."""
-        ctx = Context(HRMSCharm, charm_root=".")
-        c = _container(site_exists=False, templates_path=templates_path)
-        state = State(
-            containers=[c],
-            relations=[_mysql_relation(), _redis_relation(), PeerRelation("hrms-peers")],
-            leader=True,
-        )
-        out = ctx.run(ctx.on.pebble_ready(c), state)
-        assert out.unit_status == ops.ActiveStatus()
-
-        out_peers = out.get_relations("hrms-peers")[0]
-        assert "admin-password" in out_peers.local_app_data
-        assert len(out_peers.local_app_data["admin-password"]) == 24
+def test_admin_password_read_from_secret(templates_path: Path):
+    """Reconcile reads the admin password from the configured Juju secret."""
+    ctx = Context(HRMSCharm, charm_root=".")
+    c = _container(site_exists=False, templates_path=templates_path)
+    secret = _admin_secret("my-secure-password")
+    state = State(
+        containers=[c],
+        relations=[_mysql_relation(), _redis_relation(), PeerRelation("hrms-peers")],
+        secrets=[secret],
+        config={"admin-password-secret": secret.id},
+        leader=True,
+    )
+    out = ctx.run(ctx.on.pebble_ready(c), state)
+    assert out.unit_status == ops.ActiveStatus()

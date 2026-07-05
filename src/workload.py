@@ -307,8 +307,13 @@ class FrappeWorkload:
             raise WorkloadError(f"Failed to migrate site {site_name!r}: {exc}") from exc
 
     def start_services(self) -> None:
-        """Start any services that are not yet running (no-op if all running)."""
-        self._container.autostart()
+        """Start all workload services."""
+        for service_name in SERVICES:
+            try:
+                self._container.start(service_name)
+            except ops.pebble.Error:
+                # Service may already be running or not exist yet; ignore
+                pass
 
     def restart_services(self) -> None:
         """Restart all running workload services."""
@@ -401,7 +406,7 @@ class FrappeWorkload:
                         " --preload"
                         " frappe.app:application"
                     ),
-                    "startup": "enabled",
+                    "startup": "disabled",
                     "user": "frappe",
                     "working-dir": BENCH_DIR,
                     "environment": bench_env,
@@ -411,7 +416,7 @@ class FrappeWorkload:
                     "override": "replace",
                     "summary": "Frappe Socket.IO websocket server",
                     "command": f"{NODE_BIN} {SOCKETIO_JS}",
-                    "startup": "enabled",
+                    "startup": "disabled",
                     "user": "frappe",
                     "working-dir": BENCH_DIR,
                     "environment": bench_env,
@@ -421,14 +426,14 @@ class FrappeWorkload:
                     "override": "replace",
                     "summary": "Frappe nginx frontend",
                     "command": "nginx -g 'daemon off;'",
-                    "startup": "enabled",
+                    "startup": "disabled",
                     "on-check-failure": {"frontend-ready": "restart"},
                 },
                 "queue-short": {
                     "override": "replace",
                     "summary": "Frappe short queue worker",
                     "command": f"{BENCH_BIN} worker --queue short,default",
-                    "startup": "enabled",
+                    "startup": "disabled",
                     "user": "frappe",
                     "working-dir": BENCH_DIR,
                     "environment": bench_env,
@@ -437,7 +442,7 @@ class FrappeWorkload:
                     "override": "replace",
                     "summary": "Frappe long queue worker",
                     "command": f"{BENCH_BIN} worker --queue long,default,short",
-                    "startup": "enabled",
+                    "startup": "disabled",
                     "user": "frappe",
                     "working-dir": BENCH_DIR,
                     "environment": bench_env,
@@ -446,7 +451,7 @@ class FrappeWorkload:
                     "override": "replace",
                     "summary": "Frappe background scheduler",
                     "command": f"{BENCH_BIN} schedule",
-                    "startup": "enabled",
+                    "startup": "disabled",
                     "user": "frappe",
                     "working-dir": BENCH_DIR,
                     "environment": bench_env,

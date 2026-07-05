@@ -29,9 +29,15 @@ def test_deploy(charm_path: str, resource_images: dict[str, str], juju: jubilant
     """
     arrange: An empty Juju K8s model.
     act: Deploy frappe-hrms alongside mariadb-k8s, redis-k8s, and traefik-k8s
-         and wire up all integrations.
+         and wire up all integrations. Create a Juju secret for the admin password.
     assert: All applications reach active/idle within the timeout.
     """
+    # Create a Juju secret containing the admin password.
+    secret_output = juju.cli(
+        "add-secret", "admin-password-secret", "password=test-admin-password"
+    )
+    secret_id = secret_output.strip()
+
     juju.deploy(MARIADB_APP, channel="latest/edge", trust=True)
     juju.deploy(REDIS_APP, channel="latest/edge", trust=True)
     juju.deploy(
@@ -44,6 +50,7 @@ def test_deploy(charm_path: str, resource_images: dict[str, str], juju: jubilant
         charm_path,
         app=FRAPPE_APP,
         resources=resource_images,
+        config={"admin-password-secret": secret_id},
         trust=True,
     )
 
@@ -123,29 +130,3 @@ def test_webpage_accessible(juju: jubilant.Juju):
     )
 
 
-def test_get_admin_credentials(juju: jubilant.Juju):
-    """
-    arrange: HRMS charm is active with a created site.
-    act: Run the get-admin-credentials action.
-    assert: The action returns a username and a non-empty password.
-    """
-    task = juju.run(f"{FRAPPE_APP}/leader", "get-admin-credentials")
-    assert task.results["username"] == "Administrator"
-    assert len(task.results["password"]) > 0
-    logger.info("Admin credentials retrieved successfully")
-
-
-def test_create_user(juju: jubilant.Juju):
-    """
-    arrange: HRMS charm is active with a created site.
-    act: Run the create-user action with an email and first name.
-    assert: The action succeeds and returns the email and a password.
-    """
-    task = juju.run(
-        f"{FRAPPE_APP}/leader",
-        "create-user",
-        {"email": "testuser@example.com", "first-name": "Test", "last-name": "User"},
-    )
-    assert task.results["email"] == "testuser@example.com"
-    assert len(task.results["password"]) > 0
-    logger.info("User created successfully: %s", task.results["email"])
