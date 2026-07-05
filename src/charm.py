@@ -9,9 +9,9 @@ import logging
 import re
 import secrets
 import string
+import typing
 
 import ops
-import typing
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
 from charms.traefik_k8s.v2.ingress import IngressPerAppRequirer
@@ -68,7 +68,9 @@ class HRMSCharm(ops.CharmBase):
             self.framework.observe(event, self._reconcile)
 
         self.framework.observe(self.on.upgrade_charm, self._on_upgrade_charm)
-        self.framework.observe(self.on.get_admin_credentials_action, self._on_get_admin_credentials)
+        self.framework.observe(
+            self.on.get_admin_credentials_action, self._on_get_admin_credentials
+        )
         self.framework.observe(self.on.create_user_action, self._on_create_user)
 
     # ------------------------------------------------------------------
