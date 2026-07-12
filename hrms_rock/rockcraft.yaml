@@ -21,25 +21,22 @@ license: GPL-3.0
 platforms:
   amd64:
 
-# Deadsnakes PPA provides Python 3.14, required by Frappe v16.
-package-repositories:
-  - type: apt
-    ppa: deadsnakes/ppa
-
 parts:
-  # System-level runtime dependencies for Frappe.
-  # wkhtmltopdf and X11 fonts are intentionally excluded: PDF generation is
-  # an optional feature that can be added via a separate layer if required.
-  system-deps:
+  frappe-bench:
     plugin: nil
+    build-snaps:
+      - node/24/stable
+    stage-snaps:
+      - node/24/stable
     build-packages:
       - git
       - curl
       - gnupg
       - ca-certificates
       - build-essential
-      - python3.14-dev
+      - python3.14
       - python3.14-venv
+      - python3.14-dev
       - libssl-dev
       - libffi-dev
       - libmariadb-dev
@@ -49,7 +46,6 @@ parts:
       - zlib1g-dev
     stage-packages:
       - python3.14
-      - python3.14-venv
       - nginx
       - ca-certificates
       - libssl3
@@ -57,119 +53,52 @@ parts:
       - libmariadb3
       - mariadb-client
       - git
-
-  # Node.js 24 LTS — required for frappe socketio.js and frontend asset builds.
-  # Frappe v16 requires Node.js >= 24 (enforced in package.json engines field).
-  # The override-build both installs node/yarn into the build environment AND
-  # stages the binaries into $CRAFT_PART_INSTALL so they land in the final rock.
-  nodejs:
-    plugin: nil
-    after: [system-deps]
-    override-build: |
-      set -ex
-      curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
-      apt-get install -y nodejs
-      npm install -g yarn
-
-      # Stage only the node runtime binary — npm/yarn are build-time only.
-      # The only Node.js process at runtime is `node socketio.js` (websocket).
-      mkdir -p "$CRAFT_PART_INSTALL/usr/bin"
-      cp -aL /usr/bin/node  "$CRAFT_PART_INSTALL/usr/bin/node"
-
-      node --version
-
-  # Frappe bench environment with frappe framework + ERPNext + HRMS.
-  # ERPNext v16 is required by HRMS v16. MariaDB is the database backend.
-  frappe-bench:
-    plugin: nil
-    after: [system-deps, nodejs]
-    build-packages:
-      - git
-      - curl
-      - build-essential
-      # python3.14 and python3.14-venv are listed as build-packages so the NATIVE
-      # binaries at /usr/bin/python3.14 exist in the LXD container. Using the staged
-      # python (from stage-packages) causes pip to install bench under
-      # /root/stage/usr/local/bin/ with a shebang pointing to the staged path,
-      # which is unreachable from su sessions. Native python avoids this entirely.
-      - python3.14
-      - python3.14-venv
-      - python3.14-dev
-      - libssl-dev
-      - libffi-dev
-      - libmariadb-dev
-      - libmariadb-dev-compat
-      - libjpeg-dev
-      - zlib1g-dev
-      - pkg-config
+    permissions:
+      - path: home/frappe/frappe-bench
+        owner: 1000
+        group: 1000
+    prime:
+      - -home/frappe/frappe-bench/apps/*/.git
+      - -home/frappe/frappe-bench/apps/*/.github
+      - -home/frappe/frappe-bench/apps/*/*/node_modules
+      - -include/node
+    overlay-script: |
+      chroot "${CRAFT_OVERLAY}" userdel -r ubuntu 2>/dev/null || true
+      groupadd -R "${CRAFT_OVERLAY}" -g 1000 frappe
+      useradd -R "${CRAFT_OVERLAY}" -M -u 1000 -g frappe -d /home/frappe -s /bin/bash frappe
     override-build: |
       set -ex
 
-      # Create frappe + www-data users. Needed for `su frappe` during build and
-      # staged into /etc/passwd for runtime (stage-packages does not run postinst).
-      groupadd -g 1000 frappe 2>/dev/null || true
-      useradd -u 1000 -g 1000 -m -d /home/frappe -s /bin/bash frappe 2>/dev/null || true
-      groupadd -g 33 www-data 2>/dev/null || true
-      useradd -u 33 -g 33 -r -s /usr/sbin/nologin -d /var/www www-data 2>/dev/null || true
+      groupadd -g 1000 frappe
+      useradd -u 1000 -g 1000 -m -d /home/frappe -s /bin/bash frappe
 
-      # pip is available from the deadsnakes python3.14 package. Use
-      # --break-system-packages since we're inside a rock build container.
       /usr/bin/python3.14 -m pip install --break-system-packages frappe-bench
 
-      # Initialise bench — clones Frappe v16 and runs yarn install for JS deps.
-      su -s /bin/bash frappe -c "
+      runuser -s /bin/bash frappe -c "
         set -ex
-        export PATH=/usr/local/bin:/usr/bin:/bin
-        export NODE_OPTIONS='--max-old-space-size=2048'
-        export YARN_NETWORK_CONCURRENCY=2
+        export PATH=/snap/bin:/usr/local/bin:/usr/bin:/bin
+
         bench init \
           --frappe-branch=version-16 \
-          --python=/usr/bin/python3.14 \
           --no-procfile \
           --no-backups \
           --skip-redis-config-generation \
           /home/frappe/frappe-bench
-      "
-
-      # Fetch apps, build frontend assets, and stage bench CLI + tzdata in the venv.
-      su -s /bin/bash frappe -c "
-        set -ex
-        export PATH=/usr/local/bin:/usr/bin:/bin
-        export NODE_OPTIONS='--max-old-space-size=2048'
-        export YARN_NETWORK_CONCURRENCY=2
         cd /home/frappe/frappe-bench
 
-        bench get-app https://github.com/frappe/erpnext --branch version-16
-        bench get-app https://github.com/frappe/hrms --branch version-16
+        bench get-app erpnext --branch version-16
+        bench get-app hrms --branch version-16
 
-        bench build --production --app frappe
-        bench build --production --app erpnext
-        bench build --production --app hrms
+        bench build --production
 
-        # bench CLI + tzdata must be in the venv so they are available at runtime
-        # without requiring a global python3.14 install.
         env/bin/pip install frappe-bench tzdata
 
-        # Move pre-built assets out of sites/ before it becomes a K8s emptyDir.
-        # The charm recreates the sites/assets -> bench/assets symlink on pod start.
-        cp -r sites/assets assets
-        rm -rf sites/assets
+        mv sites/assets assets
       "
 
-      # Stage the bench into the rock and fix ownership (cp stages as root).
       mkdir -p "${CRAFT_PART_INSTALL}/home/frappe"
       cp -r /home/frappe/frappe-bench "${CRAFT_PART_INSTALL}/home/frappe/"
-      chown -R 1000:1000 "${CRAFT_PART_INSTALL}/home/frappe/frappe-bench"
 
-      # Stage user/group entries for runtime.
-      mkdir -p "${CRAFT_PART_INSTALL}/etc"
-      printf 'frappe:x:1000:1000::/home/frappe:/bin/bash\nwww-data:x:33:33::/var/www:/usr/sbin/nologin\n' \
-        >> "${CRAFT_PART_INSTALL}/etc/passwd"
-      printf 'frappe:x:1000:\nwww-data:x:33:\n' \
-        >> "${CRAFT_PART_INSTALL}/etc/group"
-
-  # Nginx configuration template baked into the rock.
-  # workload.py reads it at runtime from /templates/nginx/frappe.conf.template.
   nginx-config:
     plugin: dump
     source: templates/

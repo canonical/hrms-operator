@@ -41,7 +41,7 @@ juju integrate hrms traefik-k8s
 
 | Relation | Interface | Role | Description |
 |----------|-----------|------|-------------|
-| `mysql` | `mysql_client` | requires | MariaDB database (via data-platform-libs) |
+| `database` | `mysql_client` | requires | MariaDB database (via data-platform-libs) |
 | `redis` | `redis` | requires | Redis for caching, queues, and Socket.IO |
 | `ingress` | `ingress` | requires | Ingress for external access |
 

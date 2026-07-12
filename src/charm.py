@@ -12,14 +12,21 @@ import ops
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
 from charms.traefik_k8s.v2.ingress import IngressPerAppRequirer
+from pydantic import ValidationError
 
-from state import CharmState, MissingRelationError
+from state import (
+    CharmState,
+    InvalidConfigError,
+    InvalidIntegrationError,
+    MissingConfigError,
+    MissingIntegrationError,
+)
 from workload import FrappeWorkload, WorkloadError
 
 logger = logging.getLogger(__name__)
 
 CONTAINER_NAME = "frappe-hrms"
-DATABASE_RELATION = "mariadb"
+DATABASE_RELATION = "database"
 REDIS_RELATION = "redis"
 INGRESS_RELATION = "ingress"
 PEER_RELATION = "hrms-peers"
@@ -65,8 +72,6 @@ class HRMSCharm(ops.CharmBase):
         ]:
             self.framework.observe(event, self._reconcile)
 
-        self.framework.observe(self.on.upgrade_charm, self._on_upgrade_charm)
-
     def _reconcile(self, _: ops.EventBase) -> None:
         """Reconcile the workload with the desired state."""
         self._container = self.unit.get_container(CONTAINER_NAME)
@@ -75,9 +80,16 @@ class HRMSCharm(ops.CharmBase):
             return
 
         try:
-            state = CharmState.from_charm(self, self._database, self._redis, self._ingress)
-        except MissingRelationError as exc:
-            self.unit.status = ops.BlockedStatus(str(exc))
+            state = CharmState.from_charm(self, self._database, self._redis)
+        except (
+            MissingIntegrationError,
+            InvalidIntegrationError,
+            MissingConfigError,
+            InvalidConfigError,
+            ValidationError,
+        ):
+            self.unit.status = ops.BlockedStatus("Invalid charm state; check the debug logs")
+            logger.exception("Failed to build charm state")
             return
 
         workload = FrappeWorkload(self._container)
@@ -85,67 +97,26 @@ class HRMSCharm(ops.CharmBase):
         try:
             workload.setup_assets()
 
-            # Create site if it doesn't exist yet
-            if not workload.site_exists(state.site_name):
-                if not state.admin_password:
-                    self.unit.status = ops.BlockedStatus(
-                        "Set 'admin-password-secret' config before initialising the site"
-                    )
-                    return
-                self.unit.status = ops.WaitingStatus("Initialising Frappe site")
-                workload.create_site(state, state.admin_password)
-                return  # Let the next reconcile handle configuration
+            apps_ready = workload.required_apps_installed(state.site_name)
 
-            # Now that the site is ready, push the pebble layer and start services.
+            if not apps_ready:
+                self.unit.status = ops.MaintenanceStatus("Setting up HRMS")
+                workload.setup_hrms(state)
+
             config_changed = workload.configure(state)
 
-            if config_changed:
-                workload.restart_services()
-            else:
-                workload.start_services()
+            workload.reconcile_services(restart=config_changed)
 
-            # Check if all services are healthy before declaring active.
-            # If health checks are failing, stay in waiting status.
             if workload.services_healthy():
                 self.unit.status = ops.ActiveStatus()
             else:
                 self.unit.status = ops.WaitingStatus("Waiting for services to become healthy")
 
-        except WorkloadError as exc:
-            self.unit.status = ops.BlockedStatus(str(exc))
-            logger.exception("Workload reconciliation failed")
-
-    def _on_upgrade_charm(self, _: ops.UpgradeCharmEvent) -> None:
-        """Run bench migrate and restart services after an OCI image upgrade."""
-        self._container = self.unit.get_container(CONTAINER_NAME)
-        if not self._container.can_connect():
-            self.unit.status = ops.WaitingStatus("Waiting for Pebble to be ready")
-            return
-
-        try:
-            state = CharmState.from_charm(self, self._database, self._redis, self._ingress)
-        except MissingRelationError as exc:
-            self.unit.status = ops.BlockedStatus(str(exc))
-            return
-
-        workload = FrappeWorkload(self._container)
-
-        if not workload.site_exists(state.site_name):
-            logger.info(
-                "Site %r not yet ready; skipping upgrade migration (will be created by reconcile)",
-                state.site_name,
+        except WorkloadError:
+            self.unit.status = ops.BlockedStatus(
+                "Workload reconciliation failed; check the debug logs"
             )
-            return
-
-        try:
-            workload.setup_assets()
-            workload.configure(state)
-            workload.migrate(state.site_name)
-            workload.restart_services()
-            self.unit.status = ops.ActiveStatus()
-        except WorkloadError as exc:
-            self.unit.status = ops.BlockedStatus(str(exc))
-            logger.exception("Upgrade migration failed")
+            logger.exception("Workload reconciliation failed")
 
 
 if __name__ == "__main__":  # pragma: nocover

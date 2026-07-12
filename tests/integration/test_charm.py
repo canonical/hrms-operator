@@ -56,7 +56,7 @@ def test_deploy(charm_path: str, resource_images: dict[str, str], juju: jubilant
     # Grant the secret to the frappe-hrms charm so it can read it
     juju.grant_secret(secret_id, FRAPPE_APP)
 
-    juju.integrate(f"{FRAPPE_APP}:mariadb", f"{MARIADB_APP}:database")
+    juju.integrate(f"{FRAPPE_APP}:database", f"{MARIADB_APP}:database")
     juju.integrate(f"{FRAPPE_APP}:redis", f"{REDIS_APP}:redis")
     juju.integrate(f"{FRAPPE_APP}:ingress", f"{TRAEFIK_APP}:ingress")
 

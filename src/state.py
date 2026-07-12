@@ -4,92 +4,52 @@
 """Charm runtime state abstraction."""
 
 import logging
-from typing import Optional
 from urllib.parse import urlparse
 
 import ops
-import pydantic
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 from charms.redis_k8s.v0.redis import RedisRequires
-from charms.traefik_k8s.v2.ingress import IngressPerAppRequirer
+from pydantic import Field, SecretStr
+from pydantic.dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
 
+class MissingConfigError(Exception):
+    """Missing charm configuration."""
+
+
 class InvalidConfigError(Exception):
-    """Raised when the charm configuration is invalid or incomplete."""
-
-    def __init__(self, key: str, reason: str = "is required") -> None:
-        """Initialise with the config key and reason."""
-        self.key = key
-        super().__init__(f"Configuration '{key}' {reason}")
+    """Invalid content in charm configurations."""
 
 
-class MissingRelationError(Exception):
-    """Raised when a required integration is missing or not yet ready."""
-
-    def __init__(self, relation_name: str) -> None:
-        """Initialise with the relation name."""
-        self.relation_name = relation_name
-        super().__init__(f"Integration '{relation_name}' is required but not ready")
+class MissingIntegrationError(Exception):
+    """Missing charm integration."""
 
 
-class DatabaseConfig(pydantic.BaseModel):
+class InvalidIntegrationError(Exception):
+    """Invalid content in integrations."""
+
+
+@dataclass(frozen=True)
+class DatabaseConfig:
     """Database connection configuration."""
 
-    host: str
-    port: int = 3306
-    user: str
-    password: str
-    database: str
-
-    model_config = pydantic.ConfigDict(frozen=True)
+    password: SecretStr
+    host: str = Field(min_length=1)
+    user: str = Field(min_length=1)
+    database: str = Field(min_length=1)
+    port: int = Field(gt=0)
 
 
-class RedisConfig(pydantic.BaseModel):
-    """Redis connection configuration."""
+@dataclass(frozen=True)
+class CharmState:
+    """State of the Frappe HRMS charm."""
 
-    host: str
-    port: int = 6379
-
-    model_config = pydantic.ConfigDict(frozen=True)
-
-    @property
-    def url(self) -> str:
-        """Return the Redis connection URL."""
-        return f"redis://{self.host}:{self.port}"
-
-
-class CharmState(pydantic.BaseModel):
-    """Complete runtime state of the Frappe HRMS charm.
-
-    Populated via :meth:`from_charm`. All access to Juju-level state
-    (config, relations, etc.) is encapsulated in this class and in
-    ``from_charm``. Downstream code (workload, tests) only interacts with
-    instances of this model.
-    """
-
-    # Frappe site configuration
-    site_name: str
-
-    # Integration data (required)
     database: DatabaseConfig
-    redis: RedisConfig
-
-    # Ingress: external hostname provided by Traefik (None if no ingress)
-    external_host: Optional[str] = None
-
-    # Juju secret ID for the admin password (None if not configured)
-    admin_password_secret_id: Optional[str] = None
-
-    # Admin password read from the secret (None if not configured or not yet available)
-    admin_password: Optional[str] = None
-
-    model_config = pydantic.ConfigDict(frozen=True)
-
-    # ------------------------------------------------------------------
-    # Factory
-    # ------------------------------------------------------------------
+    admin_password: SecretStr
+    site_name: str = Field(min_length=1)
+    redis_url: str = Field(min_length=1)
 
     @classmethod
     def from_charm(
@@ -97,121 +57,127 @@ class CharmState(pydantic.BaseModel):
         charm: ops.CharmBase,
         database_requirer: DatabaseRequires,
         redis_requirer: RedisRequires,
-        ingress_requirer: IngressPerAppRequirer,
     ) -> "CharmState":
-        """Build CharmState from the live charm object and its integration helpers.
+        """Build CharmState from the charm object and its integrations.
 
         Raises:
-            MissingRelationError: When a required integration is not ready.
+            MissingIntegrationError: When a required integration is not ready.
+            InvalidIntegrationError: When a required integration has published
+                malformed data.
+            MissingConfigError: When required configuration is unset.
+            InvalidConfigError: When configuration content is invalid.
         """
         site_name = charm.app.name
 
-        database = cls._collect_database(database_requirer, site_name)
-        if database is None:
-            raise MissingRelationError("mariadb")
-
-        redis = cls._collect_redis(redis_requirer)
-        if redis is None:
-            raise MissingRelationError("redis")
-
-        external_host = cls._collect_ingress_host(ingress_requirer)
-        admin_password_secret_id = (
-            str(charm.config.get("admin-password-secret", "")).strip() or None
-        )
-        admin_password = None
-        if admin_password_secret_id:
-            try:
-                content = charm.model.get_secret(id=admin_password_secret_id).get_content(
-                    refresh=True
-                )
-                admin_password = content.get("password", "")
-            except Exception as e:
-                logger.warning("Failed to read admin password secret: %s", e)
+        database = cls._fetch_database_details(database_requirer)
+        redis_url = cls._fetch_redis_url(redis_requirer)
+        admin_password = cls._fetch_admin_password(charm)
 
         return cls(
             site_name=site_name,
             database=database,
-            redis=redis,
-            external_host=external_host,
-            admin_password_secret_id=admin_password_secret_id,
+            redis_url=redis_url,
             admin_password=admin_password,
         )
 
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
-
     @staticmethod
-    def _collect_database(
-        database_requirer: DatabaseRequires,
-        site_name: str,
-    ) -> Optional[DatabaseConfig]:
-        """Extract database config from the DatabaseRequires helper."""
-        if not database_requirer.is_resource_created():
-            return None
+    def _fetch_admin_password(charm: ops.CharmBase) -> SecretStr:
+        """Read the admin password from the configured Juju secret.
 
-        relation_data = database_requirer.fetch_relation_data()
-        for data in relation_data.values():
-            endpoints = data.get("endpoints", "")
-            if not endpoints:
-                continue
-
-            # endpoints may be "host:port" or "host:port,replica:port"
-            primary_endpoint = endpoints.split(",")[0].strip()
-            if ":" in primary_endpoint:
-                host, port_str = primary_endpoint.rsplit(":", 1)
-                port = int(port_str)
-            else:
-                host = primary_endpoint
-                port = 3306
-
-            # Derive db name from site name (mariadb-k8s sets database == username).
-            db_name = data.get("database", "") or site_name
-
-            # Use the username from the relation data (mariadb-k8s creates a
-            # user with the same name as the database, which Frappe requires).
-            db_user = data.get("username", "") or db_name
-
-            return DatabaseConfig(
-                host=host,
-                port=port,
-                user=db_user,
-                password=data.get("password", ""),
-                database=db_name,
+        Raises:
+            MissingConfigError: When the admin-password-secret config is unset.
+            InvalidConfigError: When the secret is unreadable or the 'password'
+                value is missing.
+        """
+        admin_password_secret_id = (
+            str(charm.config.get("admin-password-secret", "")).strip() or None
+        )
+        if not admin_password_secret_id:
+            raise MissingConfigError("Configuration 'admin-password-secret' must be set ")
+        try:
+            content = charm.model.get_secret(id=admin_password_secret_id).get_content()
+            admin_password = content.get("password", "")
+        except ops.SecretNotFoundError as e:
+            raise InvalidConfigError(
+                "Configuration 'admin-password-secret' refers to a secret that does not exist"
+            ) from e
+        except ops.ModelError as e:
+            raise InvalidConfigError(
+                "Configuration 'admin-password-secret' could not be read; the charm may not "
+                "have permission to access the secret"
+            ) from e
+        if not admin_password:
+            raise InvalidConfigError(
+                "Configuration 'admin-password-secret' must contain a non-empty 'password' value"
             )
-
-        return None
+        return SecretStr(admin_password)
 
     @staticmethod
-    def _collect_redis(
+    def _fetch_database_details(
+        database_requirer: DatabaseRequires,
+    ) -> DatabaseConfig:
+        """Extract database config from the DatabaseRequires helper.
+
+        Raises:
+            MissingIntegrationError: When the integration is not ready yet.
+            InvalidIntegrationError: When the relation has published data but it
+                is malformed.
+        """
+        relation_data = database_requirer.fetch_relation_data()
+        if not relation_data:
+            raise MissingIntegrationError("Integration 'database' is required but not ready")
+
+        # 'database' is declared with limit: 1, so there is at most one relation.
+        data = next(iter(relation_data.values()))
+
+        endpoints = data.get("endpoints", "")
+        if not endpoints:
+            raise MissingIntegrationError("Integration 'database' is required but not ready")
+
+        # endpoints may be "host:port" or "host:port,replica:port"
+        primary_endpoint = endpoints.split(",")[0].strip()
+        parts = primary_endpoint.split(":")
+        if len(parts) != 2:
+            raise InvalidIntegrationError(
+                f"Integration 'database' endpoint is not in 'host:port' form: {endpoints}"
+            )
+        host, port_str = parts
+
+        return DatabaseConfig(
+            host=host,
+            port=port_str,
+            user=data.get("username"),
+            password=data.get("password"),
+            database=data.get("database"),
+        )
+
+    @staticmethod
+    def _fetch_redis_url(
         redis_requirer: RedisRequires,
-    ) -> Optional[RedisConfig]:
-        """Extract Redis config from the RedisRequires helper."""
+    ) -> str:
+        """Extract a Redis URL from the RedisRequires helper.
+
+        Raises:
+            MissingIntegrationError: Until the remote unit has published a URL
+                with both hostname and port.
+            InvalidIntegrationError: When the published URL is malformed (e.g. a
+                non-numeric port).
+        """
         url = redis_requirer.url
         if not url:
-            return None
+            raise MissingIntegrationError("Integration 'redis' is required but not ready")
 
         parsed = urlparse(url)
-        if not parsed.hostname:
-            logger.warning("Could not parse Redis URL: %s", url)
-            return None
 
         try:
             port = parsed.port
-        except ValueError:
-            logger.warning("Could not parse Redis port from URL: %s", url)
-            return None
+        except ValueError as exc:
+            raise InvalidIntegrationError(
+                f"Integration 'redis' published a malformed URL: {url}"
+            ) from exc
 
-        return RedisConfig(host=parsed.hostname, port=port or 6379)
+        if not parsed.hostname or port is None:
+            logger.info("Redis URL not yet complete: %s", url)
+            raise MissingIntegrationError("Integration 'redis' is required but not ready")
 
-    @staticmethod
-    def _collect_ingress_host(
-        ingress_requirer: IngressPerAppRequirer,
-    ) -> Optional[str]:
-        """Extract the external hostname provided by the ingress integration."""
-        ingress_url = ingress_requirer.url
-        if not ingress_url:
-            return None
-
-        parsed = urlparse(ingress_url)
-        return parsed.hostname or None
+        return f"redis://{parsed.hostname}:{port}"

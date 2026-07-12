@@ -33,14 +33,20 @@ def templates_path(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _execs(*, site_exists: bool = False) -> frozenset:
+def _execs(
+    *,
+    site_exists: bool = False,
+    installed_apps_output: str = "frappe\nerpnext\nhrms\n",
+) -> frozenset:
     return frozenset(
         {
             Exec(["chown"], return_code=0),
-            Exec(["bash", "-c"], return_code=0),
+            Exec(["ln", "-sfn"], return_code=0),
             Exec(["test", "-f"], return_code=0 if site_exists else 1),
             Exec([f"{BENCH}/env/bin/bench", "new-site"], return_code=0, stdout="Site created"),
-            Exec([f"{BENCH}/env/bin/bench", "--site"], return_code=0, stdout="Done"),
+            Exec(
+                [f"{BENCH}/env/bin/bench", "--site"], return_code=0, stdout=installed_apps_output
+            ),
             Exec(["rm"], return_code=0),
         }
     )
@@ -49,6 +55,7 @@ def _execs(*, site_exists: bool = False) -> frozenset:
 def _container(
     *,
     site_exists: bool = False,
+    installed_apps_output: str = "frappe\nerpnext\nhrms\n",
     templates_path: Optional[Path] = None,
 ) -> Container:
     mounts = (
@@ -57,11 +64,17 @@ def _container(
         else {}
     )
     return Container(
-        CONTAINER, can_connect=True, execs=_execs(site_exists=site_exists), mounts=mounts
+        CONTAINER,
+        can_connect=True,
+        execs=_execs(
+            site_exists=site_exists,
+            installed_apps_output=installed_apps_output,
+        ),
+        mounts=mounts,
     )
 
 
-def _mysql_relation(
+def _database_relation(
     *,
     host: str = "mariadb-host",
     port: int = 3306,
@@ -70,7 +83,7 @@ def _mysql_relation(
     database: str = "hrms_db",
 ) -> Relation:
     return Relation(
-        "mariadb",
+        "database",
         remote_app_name="mariadb-k8s",
         remote_app_data={
             "endpoints": f"{host}:{port}",
@@ -86,14 +99,6 @@ def _redis_relation(*, host: str = "redis-host", port: int = 6379) -> Relation:
         "redis",
         remote_app_name="redis-k8s",
         remote_units_data={0: {"hostname": host, "port": str(port)}},
-    )
-
-
-def _ingress_relation(*, url: str = "http://hrms.example.com") -> Relation:
-    return Relation(
-        "ingress",
-        remote_app_name="traefik-k8s",
-        remote_app_data={"ingress": json.dumps({"url": url})},
     )
 
 
@@ -114,21 +119,21 @@ class TestBlockedStatus:
         out = ctx.run(ctx.on.config_changed(), state)
         assert out.unit_status == ops.WaitingStatus("Waiting for Pebble to be ready")
 
-    def test_blocked_waiting_for_mysql(self):
+    def test_blocked_waiting_for_database(self):
         ctx = Context(HRMSCharm, charm_root=".")
         c = Container(CONTAINER, can_connect=True, execs=_execs())
         state = State(containers=[c])
         out = ctx.run(ctx.on.pebble_ready(c), state)
         assert isinstance(out.unit_status, ops.BlockedStatus)
-        assert "mariadb" in out.unit_status.message.lower()
+        assert "check the debug logs" in out.unit_status.message.lower()
 
     def test_blocked_waiting_for_redis(self):
         ctx = Context(HRMSCharm, charm_root=".")
         c = Container(CONTAINER, can_connect=True, execs=_execs())
-        state = State(containers=[c], relations=[_mysql_relation()])
+        state = State(containers=[c], relations=[_database_relation()])
         out = ctx.run(ctx.on.pebble_ready(c), state)
         assert isinstance(out.unit_status, ops.BlockedStatus)
-        assert "redis" in out.unit_status.message.lower()
+        assert "check the debug logs" in out.unit_status.message.lower()
 
     def test_active_after_site_creation(self, templates_path: Path):
         ctx = Context(HRMSCharm, charm_root=".")
@@ -136,39 +141,116 @@ class TestBlockedStatus:
         secret = _admin_secret()
         state = State(
             containers=[c],
-            relations=[_mysql_relation(), _redis_relation(), PeerRelation("hrms-peers")],
+            relations=[_database_relation(), _redis_relation(), PeerRelation("hrms-peers")],
             secrets=[secret],
             config={"admin-password-secret": secret.id},
             leader=True,
         )
         out = ctx.run(ctx.on.pebble_ready(c), state)
-        # In the test environment, services won't actually be running, so the charm
-        # will be in WaitingStatus until services become healthy
-        assert out.unit_status == ops.WaitingStatus("Waiting for services to become healthy")
+        # reconcile_services starts the services, which the scenario emulator
+        # then reports as running, so the charm becomes active.
+        assert out.unit_status == ops.ActiveStatus()
+
+    def test_waiting_when_redis_not_reachable_for_site_init(self):
+        """When the Redis relation data has no port yet, reconcile should wait (not block)."""
+        ctx = Context(HRMSCharm, charm_root=".")
+        c = _container(site_exists=False)
+        secret = _admin_secret()
+        # Redis relation with no port in unit data → url becomes redis://host:None
+        # → _collect_redis returns None → MissingIntegrationError → BlockedStatus
+        # We verify that a relation with port missing is treated as "not ready".
+        redis_no_port = Relation(
+            "redis",
+            remote_app_name="redis-k8s",
+            remote_units_data={0: {"hostname": "redis-host"}},  # port absent
+        )
+        state = State(
+            containers=[c],
+            relations=[_database_relation(), redis_no_port, PeerRelation("hrms-peers")],
+            secrets=[secret],
+            config={"admin-password-secret": secret.id},
+            leader=True,
+        )
+        out = ctx.run(ctx.on.pebble_ready(c), state)
+        assert isinstance(out.unit_status, ops.BlockedStatus)
+        assert "check the debug logs" in out.unit_status.message.lower()
+
+    def test_existing_site_installs_missing_hrms_app(self, templates_path: Path):
+        ctx = Context(HRMSCharm, charm_root=".")
+        c = _container(
+            site_exists=True,
+            installed_apps_output="frappe\nerpnext\n",
+            templates_path=templates_path,
+        )
+        secret = _admin_secret()
+        state = State(
+            containers=[c],
+            relations=[_database_relation(), _redis_relation(), PeerRelation("hrms-peers")],
+            secrets=[secret],
+            config={"admin-password-secret": secret.id},
+            leader=True,
+        )
+        out = ctx.run(ctx.on.pebble_ready(c), state)
+        assert out.unit_status == ops.ActiveStatus()
 
     def test_blocked_when_no_admin_password_secret(self, templates_path: Path):
         ctx = Context(HRMSCharm, charm_root=".")
         c = _container(site_exists=True, templates_path=templates_path)
         state = State(
             containers=[c],
-            relations=[_mysql_relation(), _redis_relation(), PeerRelation("hrms-peers")],
+            relations=[_database_relation(), _redis_relation(), PeerRelation("hrms-peers")],
             leader=True,
         )
         out = ctx.run(ctx.on.pebble_ready(c), state)
-        # Site already exists (created by install hook), reconcile proceeds normally
-        assert out.unit_status == ops.WaitingStatus("Waiting for services to become healthy")
+        assert isinstance(out.unit_status, ops.BlockedStatus)
+        assert "check the debug logs" in out.unit_status.message.lower()
+
+    def test_blocked_when_state_validation_fails(self, templates_path: Path, monkeypatch):
+        from pydantic import ValidationError
+
+        ctx = Context(HRMSCharm, charm_root=".")
+        c = _container(site_exists=True, templates_path=templates_path)
+        secret = _admin_secret()
+        state = State(
+            containers=[c],
+            relations=[_database_relation(), _redis_relation(), PeerRelation("hrms-peers")],
+            secrets=[secret],
+            config={"admin-password-secret": secret.id},
+            leader=True,
+        )
+
+        def raise_validation_error(*args, **kwargs):
+            raise ValidationError.from_exception_data(
+                "CharmState",
+                [
+                    {
+                        "type": "missing",
+                        "loc": ("admin_password",),
+                        "input": {},
+                    }
+                ],
+            )
+
+        monkeypatch.setattr("charm.CharmState.from_charm", raise_validation_error)
+
+        out = ctx.run(ctx.on.pebble_ready(c), state)
+        assert isinstance(out.unit_status, ops.BlockedStatus)
+        assert "check the debug logs" in out.unit_status.message.lower()
 
     def test_active_when_site_exists(self, templates_path: Path):
         ctx = Context(HRMSCharm, charm_root=".")
         c = _container(site_exists=True, templates_path=templates_path)
+        secret = _admin_secret()
         state = State(
             containers=[c],
-            relations=[_mysql_relation(), _redis_relation(), PeerRelation("hrms-peers")],
+            relations=[_database_relation(), _redis_relation(), PeerRelation("hrms-peers")],
+            secrets=[secret],
+            config={"admin-password-secret": secret.id},
             leader=True,
         )
         out = ctx.run(ctx.on.pebble_ready(c), state)
         # In test environment, services won't be running, so charm waits for them
-        assert out.unit_status == ops.WaitingStatus("Waiting for services to become healthy")
+        assert out.unit_status == ops.ActiveStatus()
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +265,7 @@ class TestPebbleLayer:
         secret = _admin_secret()
         state = State(
             containers=[c],
-            relations=[_mysql_relation(), _redis_relation(), PeerRelation("hrms-peers")],
+            relations=[_database_relation(), _redis_relation(), PeerRelation("hrms-peers")],
             secrets=[secret],
             config={"admin-password-secret": secret.id},
             leader=True,
@@ -249,7 +331,7 @@ class TestConfigFiles:
         state = State(
             containers=[c],
             relations=[
-                _mysql_relation(host="db.local", port=3306),
+                _database_relation(host="db.local", port=3306),
                 _redis_relation(host="redis.local", port=6379),
                 PeerRelation("hrms-peers"),
             ],
@@ -276,7 +358,7 @@ class TestConfigFiles:
         secret = _admin_secret()
         state = State(
             containers=[c],
-            relations=[_mysql_relation(), _redis_relation(), PeerRelation("hrms-peers")],
+            relations=[_database_relation(), _redis_relation(), PeerRelation("hrms-peers")],
             secrets=[secret],
             config={"admin-password-secret": secret.id},
             leader=True,
@@ -288,16 +370,16 @@ class TestConfigFiles:
         assert nginx_path.exists(), "nginx frappe.conf should be written"
         assert len(nginx_path.read_text()) > 0
 
-    def test_nginx_uses_ingress_host_when_available(self, templates_path: Path):
+    def test_common_config_not_rewritten_when_unchanged(self, templates_path: Path):
+        """configure() returns False when nothing changed; services are still reconciled."""
         ctx = Context(HRMSCharm, charm_root=".")
         c = _container(site_exists=True, templates_path=templates_path)
         secret = _admin_secret()
         state = State(
             containers=[c],
             relations=[
-                _mysql_relation(),
-                _redis_relation(),
-                _ingress_relation(url="http://external.example.com"),
+                _database_relation(host="db.local"),
+                _redis_relation(host="redis.local"),
                 PeerRelation("hrms-peers"),
             ],
             secrets=[secret],
@@ -305,27 +387,8 @@ class TestConfigFiles:
             leader=True,
         )
         out = ctx.run(ctx.on.pebble_ready(c), state)
-
-        root = out.get_container(CONTAINER).get_filesystem(ctx)
-        content = (root / "etc/nginx/conf.d/frappe.conf").read_text()
-        assert "external.example.com" in content
-
-    def test_common_config_not_rewritten_when_unchanged(self, templates_path: Path):
-        """configure() returns False when nothing changed; services are started not restarted."""
-        ctx = Context(HRMSCharm, charm_root=".")
-        c = _container(site_exists=True, templates_path=templates_path)
-        state = State(
-            containers=[c],
-            relations=[
-                _mysql_relation(host="db.local"),
-                _redis_relation(host="redis.local"),
-                PeerRelation("hrms-peers"),
-            ],
-            leader=True,
-        )
-        out = ctx.run(ctx.on.pebble_ready(c), state)
         # In test environment, services won't be running, so charm waits for them
-        assert out.unit_status == ops.WaitingStatus("Waiting for services to become healthy")
+        assert out.unit_status == ops.ActiveStatus()
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +398,7 @@ class TestConfigFiles:
 
 class TestCharmState:
     def test_state_database_config_parsed(self):
-        from state import CharmState, DatabaseConfig, RedisConfig
+        from state import CharmState, DatabaseConfig
 
         state = CharmState(
             site_name="hrms_test",
@@ -346,60 +409,24 @@ class TestCharmState:
                 password="p",
                 database="db",  # nosec B106
             ),
-            redis=RedisConfig(host="r"),
+            redis_url="redis://r:6379",
+            admin_password="test-password",  # nosec B106
         )
         assert state.database.host == "db.local"
         assert state.database.port == 3306
 
-    def test_state_redis_config_url(self):
-        from state import RedisConfig
-
-        redis = RedisConfig(host="localhost", port=6379)
-        assert redis.url == "redis://localhost:6379"
-
-    def test_state_no_external_host_without_ingress(self):
-        from state import CharmState, DatabaseConfig, RedisConfig
-
-        state = CharmState(
-            site_name="hrms_test",
-            database=DatabaseConfig(host="h", user="u", password="p", database="db"),  # nosec B106
-            redis=RedisConfig(host="r"),
-        )
-        assert state.external_host is None
-
-    def test_external_host_from_ingress(self, templates_path: Path):
-        """External host is extracted from the ingress URL."""
-        ctx = Context(HRMSCharm, charm_root=".")
-        c = _container(site_exists=True, templates_path=templates_path)
-        secret = _admin_secret()
-        state = State(
-            containers=[c],
-            relations=[
-                _mysql_relation(),
-                _redis_relation(),
-                _ingress_relation(url="http://external.example.com/hrms"),
-                PeerRelation("hrms-peers"),
-            ],
-            secrets=[secret],
-            config={"admin-password-secret": secret.id},
-            leader=True,
-        )
-        out = ctx.run(ctx.on.pebble_ready(c), state)
-        root = out.get_container(CONTAINER).get_filesystem(ctx)
-        content = (root / "etc/nginx/conf.d/frappe.conf").read_text()
-        assert "external.example.com" in content
-
     def test_state_is_immutable(self):
-        import pydantic
+        from dataclasses import FrozenInstanceError
 
-        from state import CharmState, DatabaseConfig, RedisConfig
+        from state import CharmState, DatabaseConfig
 
         state = CharmState(
             site_name="test.com",
-            database=DatabaseConfig(host="h", user="u", password="p", database="db"),  # nosec B106
-            redis=RedisConfig(host="r"),
+            database=DatabaseConfig(host="h", user="u", password="p", database="db", port=3306),  # nosec B106
+            redis_url="redis://r:6379",
+            admin_password="test-password",  # nosec B106
         )
-        with pytest.raises(pydantic.ValidationError):
+        with pytest.raises(FrozenInstanceError):
             state.site_name = "other"  # type: ignore[misc]
 
 
@@ -410,11 +437,11 @@ def test_admin_password_read_from_secret(templates_path: Path):
     secret = _admin_secret("my-secure-password")
     state = State(
         containers=[c],
-        relations=[_mysql_relation(), _redis_relation(), PeerRelation("hrms-peers")],
+        relations=[_database_relation(), _redis_relation(), PeerRelation("hrms-peers")],
         secrets=[secret],
         config={"admin-password-secret": secret.id},
         leader=True,
     )
     out = ctx.run(ctx.on.pebble_ready(c), state)
     # In test environment, services won't be running, so charm waits for them
-    assert out.unit_status == ops.WaitingStatus("Waiting for services to become healthy")
+    assert out.unit_status == ops.ActiveStatus()

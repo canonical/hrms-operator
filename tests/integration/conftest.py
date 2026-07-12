@@ -3,6 +3,8 @@
 
 """Fixtures for charm integration tests."""
 
+import json
+import subprocess
 import typing
 from collections.abc import Generator
 
@@ -16,11 +18,34 @@ def juju_fixture(request: pytest.FixtureRequest) -> Generator[jubilant.Juju, Non
 
     def show_debug_log(juju: jubilant.Juju) -> None:
         if request.session.testsfailed:
-            log = juju.debug_log(limit=1000)
-            print(log, end="")
+            try:
+                log = juju.debug_log(limit=1000)
+                print(log, end="")
+            except Exception as exc:  # pragma: nocover - best effort diagnostics
+                print(f"Skipping debug-log capture: {exc}")
+
+    def model_exists(model_name: str) -> bool:
+        """Return True if the requested Juju model currently exists."""
+        result = subprocess.run(
+            ["juju", "models", "--format", "json"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        models = json.loads(result.stdout).get("models", [])
+        names = {m.get("name", "") for m in models}
+        short_names = {m.get("short-name", "") for m in models}
+        return model_name in names or model_name in short_names
+
+    def ensure_model_exists(model_name: str) -> None:
+        """Create the target model when tests run against an explicit --model."""
+        if model_exists(model_name):
+            return
+        subprocess.run(["juju", "add-model", model_name], check=True, text=True)
 
     model = request.config.getoption("--model")
     if model:
+        ensure_model_exists(model)
         juju = jubilant.Juju(model=model)
         yield juju
         show_debug_log(juju)

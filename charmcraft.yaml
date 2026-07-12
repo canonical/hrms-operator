@@ -36,14 +36,21 @@ parts:
 containers:
   frappe-hrms:
     resource: hrms-image
+    mounts:
+      - storage: sites
+        location: /home/frappe/frappe-bench/sites
 
 resources:
   hrms-image:
     type: oci-image
     description: Frappe HRMS OCI image.
 
+storage:
+  sites:
+    type: filesystem
+
 requires:
-  mariadb:
+  database:
     interface: mysql_client
     limit: 1
   redis:

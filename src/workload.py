@@ -1,28 +1,17 @@
 # Copyright 2025 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Frappe HRMS workload operations.
+"""Frappe HRMS workload operations."""
 
-All interactions with the Frappe workload container (pebble, filesystem,
-exec) are performed here. No Juju-level state access takes place in this
-module; only the container object and CharmState instances are accepted.
-"""
-
-from __future__ import annotations
-
-import contextlib
 import json
 import logging
-from typing import TYPE_CHECKING
 
 import ops
 
-if TYPE_CHECKING:
-    from state import CharmState
+from state import CharmState
 
 logger = logging.getLogger(__name__)
 
-# Paths inside the container
 BENCH_DIR = "/home/frappe/frappe-bench"
 SITES_DIR = f"{BENCH_DIR}/sites"
 COMMON_SITE_CONFIG = f"{SITES_DIR}/common_site_config.json"
@@ -30,7 +19,7 @@ NGINX_CONF = "/etc/nginx/conf.d/frappe.conf"
 NGINX_TEMPLATE = "/templates/nginx/frappe.conf.template"
 BENCH_BIN = f"{BENCH_DIR}/env/bin/bench"
 GUNICORN_BIN = f"{BENCH_DIR}/env/bin/gunicorn"
-NODE_BIN = "/usr/bin/node"
+NODE_BIN = "/bin/node"
 SOCKETIO_JS = f"{BENCH_DIR}/apps/frappe/socketio.js"
 
 SERVICES = [
@@ -48,23 +37,14 @@ class WorkloadError(Exception):
 
 
 class FrappeWorkload:
-    """Manages the Frappe HRMS workload running inside the pebble container.
-
-    Accepts a :class:`ops.Container` and a :class:`~state.CharmState`
-    instance. No Juju state access is performed directly here.
-    """
+    """Manages the Frappe HRMS workload running inside the pebble container."""
 
     def __init__(self, container: ops.Container) -> None:
         """Initialise with the pebble container."""
         self._container = container
 
-    @property
-    def is_ready(self) -> bool:
-        """Return True if pebble is reachable."""
-        return self._container.can_connect()
-
     @staticmethod
-    def _truncate_output_tail(output: str | None, max_chars: int = 10000) -> str:
+    def _truncate_output_tail(output: str | None, max_chars: int = 10000) -> str | None:
         """Truncate output to the last N characters if it exceeds the limit.
 
         Args:
@@ -72,53 +52,39 @@ class FrappeWorkload:
             max_chars: Maximum number of characters to keep (default: 10000).
 
         Returns:
-            The full output if it has <= max_chars, otherwise the last max_chars.
+            None if output is None, the full output if it has <= max_chars,
+            otherwise the last max_chars.
         """
         if output is None:
-            return "(no output)"
+            return None
         if len(output) > max_chars:
             return output[-max_chars:]
         return output
 
-    # ------------------------------------------------------------------
-    # Public API - called from charm.py
-    # ------------------------------------------------------------------
-
     def setup_assets(self) -> None:
-        """Prepare the runtime environment after pod start.
+        """Prepare the mounted ``sites/`` volume for use after pod start.
 
-        The ``sites/`` directory is an ephemeral K8s emptyDir, created as root
-        on every pod start. Two things must be done each time:
-
-        1. Chown ``sites/`` to the frappe user so bench can write site configs,
-           logs, and the sentinel file.
-        2. Recreate the ``sites/assets`` symlink. The rock build moves pre-built
-           frontend assets out of ``sites/`` (which would be wiped by the volume
-           mount) into ``bench/assets``. Frappe's gunicorn process looks up asset
-           manifests relative to ``sites/``, so the symlink must be restored.
-
-        All other setup (ownership of logs/, config/, www-data user, tzdata) is
-        handled at rock build time and does not need to be repeated here.
+        Raises:
+            WorkloadError: If the volume cannot be chowned or the assets
+                symlink cannot be created.
         """
         try:
             self._container.exec(
                 ["chown", "frappe:frappe", SITES_DIR],
+                timeout=60,
             ).wait()
         except (ops.pebble.ExecError, ops.pebble.APIError) as exc:
-            logger.warning("chown sites/ failed: %s", exc)
+            raise WorkloadError(f"Failed to chown {SITES_DIR} to frappe") from exc
 
-        assets_link = f"{SITES_DIR}/assets"
+        assets_link = f"{BENCH_DIR}/sites/assets"
         assets_target = f"{BENCH_DIR}/assets"
         try:
             self._container.exec(
-                [
-                    "bash",
-                    "-c",
-                    f"test -e {assets_link} || ln -s {assets_target} {assets_link}",
-                ],
+                ["ln", "-sfn", assets_target, assets_link],
+                timeout=60,
             ).wait()
         except (ops.pebble.ExecError, ops.pebble.APIError) as exc:
-            logger.warning("Failed to create assets symlink: %s", exc)
+            raise WorkloadError("Failed to create sites/assets symlink") from exc
 
     def configure(self, state: CharmState) -> bool:
         """Write all configuration files and update the pebble layer.
@@ -132,42 +98,36 @@ class FrappeWorkload:
         self._update_pebble_layer(state)
         return common_changed or nginx_changed
 
-    def site_exists(self, site_name: str) -> bool:
-        """Return True if the Frappe site is fully initialised.
+    def required_apps_installed(self, site_name: str) -> bool:
+        """Return True when all required apps are installed on the site."""
+        installed_apps = set(self._get_installed_apps(site_name))
+        required_apps = {"frappe", "erpnext", "hrms"}
+        result = required_apps.issubset(installed_apps)
+        if not result:
+            logger.info(
+                "Required apps not present for site %r: installed=%s, required=%s",
+                site_name,
+                installed_apps,
+                required_apps,
+            )
+        return result
 
-        Checks for site_config.json, which is created by ``bench new-site``.
-        Its presence proves the site bootstrap completed successfully.
-        """
-        site_config = f"{SITES_DIR}/{site_name}/site_config.json"
-        try:
-            self._container.exec(
-                ["test", "-f", site_config],
-                user="frappe",
-            ).wait()
-            return True
-        except ops.pebble.ExecError:
-            return False
-
-    def create_site(self, state: CharmState, admin_password: str) -> None:
+    def setup_hrms(self, state: CharmState) -> None:
         """Create a new Frappe site and install the erpnext and hrms apps.
-
-        The mariadb-k8s charm (data-platform-libs) provisions a dedicated
-        MariaDB user and database for the application.
 
         Args:
             state: The current charm state.
-            admin_password: The auto-generated admin password for the site.
 
         Raises:
             WorkloadError: If any bench command fails.
         """
-        # 1. Bootstrap the site if it doesn't exist
-        if not self.site_exists(state.site_name):
-            self._run_bench_new_site(state, admin_password)
+        if "frappe" not in self._get_installed_apps(state.site_name):
+            self._run_bench_new_site(state, state.admin_password.get_secret_value())
         else:
             logger.info("Frappe site %r already exists", state.site_name)
 
-        # 2. Get installed apps and install missing ones
+        self._write_common_site_config(state)
+
         installed_apps = self._get_installed_apps(state.site_name)
         logger.info(
             "Apps already installed on site %r: %s",
@@ -175,13 +135,11 @@ class FrappeWorkload:
             ", ".join(installed_apps),
         )
 
-        # 3. Install erpnext if needed
         if "erpnext" not in installed_apps:
             self._install_app(state.site_name, "erpnext", timeout=1200)
         else:
             logger.info("erpnext app already installed on site %r", state.site_name)
 
-        # 4. Install hrms if needed
         if "hrms" not in installed_apps:
             self._install_app(state.site_name, "hrms", timeout=600)
         else:
@@ -197,7 +155,6 @@ class FrappeWorkload:
         Raises:
             WorkloadError: If the command fails.
         """
-        assert state.database is not None  # noqa: S101 # nosec B101
         db = state.database
 
         logger.info(
@@ -221,7 +178,7 @@ class FrappeWorkload:
                     "--db-user",
                     db.user,
                     "--db-password",
-                    db.password,
+                    db.password.get_secret_value(),
                     "--admin-password",
                     admin_password,
                     state.site_name,
@@ -259,21 +216,39 @@ class FrappeWorkload:
         """
         logger.info("Installing %s app on site %r", app_name, site_name)
         try:
-            stdout, stderr = self._container.exec(
+            result = self._container.exec(
                 [BENCH_BIN, "--site", site_name, "install-app", app_name],
                 working_dir=BENCH_DIR,
                 user="frappe",
                 timeout=timeout,
             ).wait_output()
-            logger.info("install-app %s: %s", app_name, self._truncate_output_tail(stdout))
+            stdout, stderr = result
+            logger.info("install-app %s completed with return code 0", app_name)
+            logger.info("install-app %s stdout: %s", app_name, self._truncate_output_tail(stdout))
             if stderr:
-                logger.info(
-                    "install-app %s stderr: %s", app_name, self._truncate_output_tail(stderr)
+                logger.warning(
+                    "install-app %s stderr (non-fatal): %s",
+                    app_name,
+                    self._truncate_output_tail(stderr),
                 )
+
+            # Verify the app is actually in the database
+            logger.info("Verifying %s app installation by querying database...", app_name)
+            installed_apps = self._get_installed_apps(site_name)
+            if app_name not in installed_apps:
+                logger.warning(
+                    "App %r not found in list-apps immediately after install-app completed. "
+                    "Apps: %s. This may indicate bench install-app is not atomic.",
+                    app_name,
+                    installed_apps,
+                )
+            else:
+                logger.info("App %r verified in database", app_name)
         except ops.pebble.ExecError as exc:
             logger.error(
-                "install-app %s failed - stdout: %s, stderr: %s",
+                "install-app %s failed with exit code %s - stdout: %s, stderr: %s",
                 app_name,
+                exc.exit_code,
                 self._truncate_output_tail(exc.stdout),
                 self._truncate_output_tail(exc.stderr),
             )
@@ -298,53 +273,48 @@ class FrappeWorkload:
                 user="frappe",
                 timeout=30,
             ).wait_output()
-            # bench list-apps outputs one app per line
-            apps = [line.strip() for line in stdout.strip().split("\n") if line.strip()]
+            # bench list-apps outputs one app per line, commonly as:
+            # "<app> <version> <branch>".
+            raw_apps = [line.strip() for line in stdout.strip().split("\n") if line.strip()]
+            apps = [line.split()[0] for line in raw_apps if line.split()]
+            logger.debug(
+                "Installed apps for site %r: raw=%s normalized=%s",
+                site_name,
+                raw_apps,
+                apps,
+            )
             return apps
         except ops.pebble.ExecError as exc:
             logger.warning(
-                "Failed to list apps on site %r: %s",
+                "Failed to list apps on site %r: stdout=%s, stderr=%s",
                 site_name,
+                self._truncate_output_tail(exc.stdout),
                 self._truncate_output_tail(exc.stderr),
             )
             return []
 
-    def migrate(self, site_name: str) -> None:
-        """Run bench migrate for the site (used on upgrade-charm).
+    def reconcile_services(self, *, restart: bool = False) -> None:
+        """Ensure all workload services are running with the current layer.
 
-        Raises:
-            WorkloadError: If the migration fails.
+        Args:
+            restart: When True, restart services that are already running so
+                they pick up configuration changes. When False, running
+                services are left untouched to avoid needless downtime.
+
+        Any service that is not running is always started.
         """
-        logger.info("Running bench migrate for site %r", site_name)
-        try:
-            stdout, stderr = self._container.exec(
-                [BENCH_BIN, "--site", site_name, "migrate"],
-                working_dir=BENCH_DIR,
-                user="frappe",
-            ).wait_output()
-            logger.info("Migration output: %s", self._truncate_output_tail(stdout))
-            if stderr:
-                logger.info("Migration stderr: %s", self._truncate_output_tail(stderr))
-        except ops.pebble.ExecError as exc:
-            logger.error(
-                "Migration failed - stdout: %s, stderr: %s",
-                self._truncate_output_tail(exc.stdout),
-                self._truncate_output_tail(exc.stderr),
-            )
-            raise WorkloadError(f"Failed to migrate site {site_name!r}") from exc
-
-    def start_services(self) -> None:
-        """Start all workload services."""
-        for service_name in SERVICES:
-            with contextlib.suppress(ops.pebble.Error):
-                self._container.start(service_name)
-
-    def restart_services(self) -> None:
-        """Restart all running workload services."""
+        if restart:
+            logger.info("Configuration changed; restarting services")
         services_info = self._container.get_services()
-        for name, info in services_info.items():
-            if info.is_running():
-                self._container.restart(name)
+        for service_name in SERVICES:
+            try:
+                if (info := services_info.get(service_name)) and info.is_running():
+                    if restart:
+                        self._container.restart(service_name)
+                else:
+                    self._container.start(service_name)
+            except ops.pebble.Error as exc:
+                raise WorkloadError(f"Failed to reconcile service {service_name!r}") from exc
 
     def services_healthy(self) -> bool:
         """Check if all services have passed their health checks.
@@ -354,51 +324,35 @@ class FrappeWorkload:
         or has a failed check.
         """
         try:
-            plan = self._container.get_plan()
-        except ops.pebble.Error:
-            logger.warning("Failed to get pebble plan for health check")
-            return False
-
-        if not plan.services:
-            return False
-
-        # Check each service: must exist in plan and be running
-        try:
             services = self._container.get_services()
         except ops.pebble.Error as e:
             logger.warning("Failed to get service statuses: %s", e)
             return False
 
         for service_name in SERVICES:
-            if service_name not in plan.services:
-                logger.warning("Service %r not found in pebble plan", service_name)
-                return False
-
-            # Check if service is running (services is a dict: name -> ServiceStatus)
             service_status = services.get(service_name)
-            if not service_status or not service_status.is_running():
-                logger.debug("Service %r is not running", service_name)
+            if not service_status:
+                logger.warning("Service %r has no status", service_name)
+                return False
+            if not service_status.is_running():
+                current = getattr(service_status, "current", "unknown")
+                logger.warning(
+                    "Service %r is not running (current=%s)",
+                    service_name,
+                    current,
+                )
                 return False
 
-        # If we got here, all services are running.
-        logger.debug("All services are running and healthy")
         return True
-
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
 
     def _write_common_site_config(self, state: CharmState) -> bool:
         """Write common_site_config.json. Returns True if content changed."""
-        assert state.database is not None  # noqa: S101 # nosec B101
-        assert state.redis is not None  # noqa: S101 # nosec B101
-
         config = {
             "db_host": state.database.host,
             "db_port": state.database.port,
-            "redis_cache": state.redis.url,
-            "redis_queue": state.redis.url,
-            "redis_socketio": state.redis.url,
+            "redis_cache": state.redis_url,
+            "redis_queue": state.redis_url,
+            "redis_socketio": state.redis_url,
             "socketio_port": 9000,
             "serve_default_site": True,
             "developer_mode": 0,
@@ -414,27 +368,12 @@ class FrappeWorkload:
 
     def _write_nginx_config(self, state: CharmState) -> bool:
         """Render and write the nginx config. Returns True if content changed."""
-        # server_name uses the external host (ingress IP/hostname) for routing.
-        # X-Frappe-Site-Name and file path lookups must use the actual site name
-        # (the directory under sites/) so Frappe can find the correct site.
-        server_name = state.external_host or state.site_name
-
-        # Read the nginx config template baked into the rock.
-        # If it is missing the rock is broken — raise rather than silently
-        # using stale hardcoded config.
         try:
             template = self._container.pull(NGINX_TEMPLATE).read()
         except (ops.pebble.PathError, FileNotFoundError) as exc:
-            raise WorkloadError(
-                f"Nginx template missing from rock at {NGINX_TEMPLATE}; the rock must be rebuilt."
-            ) from exc
+            raise WorkloadError(f"Nginx template missing at {NGINX_TEMPLATE}.") from exc
 
-        rendered = (
-            template.replace("FRAPPE_SERVER_NAME", server_name)
-            .replace("FRAPPE_SITE_NAME_HEADER", state.site_name)
-            .replace("PROXY_READ_TIMEOUT", "120")
-            .replace("CLIENT_MAX_BODY_SIZE", "50m")
-        )
+        rendered = template.replace("FRAPPE_SITE_NAME_HEADER", state.site_name)
         return self._push_if_changed(NGINX_CONF, rendered, make_dirs=True)
 
     def _update_pebble_layer(self, state: CharmState) -> None:
@@ -520,8 +459,6 @@ class FrappeWorkload:
                 },
             },
             "checks": {
-                # Readiness check: used as K8s readiness probe.
-                # level=ready is intentional here (level=alive is prohibited).
                 "frontend-ready": {
                     "override": "replace",
                     "level": "ready",
@@ -530,7 +467,6 @@ class FrappeWorkload:
                     "threshold": 3,
                     "tcp": {"port": 8080},
                 },
-                # Internal checks (no level) coupled to service auto-restart.
                 "backend-up": {
                     "override": "replace",
                     "period": "10s",
