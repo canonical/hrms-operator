@@ -24,11 +24,7 @@ DEPLOY_TIMEOUT = 10 * 60
 @pytest.fixture(scope="module", name="admin_password_secret")
 def admin_password_secret_fixture(juju: jubilant.Juju) -> str:
     """Create a Juju secret holding the HRMS admin password."""
-    admin_password_secret = juju.add_secret(
-        "admin-password-secret", {"password": "test-admin-password"}
-    )
-    juju.grant_secret(admin_password_secret, FRAPPE_APP)
-    return admin_password_secret
+    return juju.add_secret("admin-password-secret", {"password": "test-admin-password"})
 
 
 @pytest.fixture(scope="module", name="mariadb")
@@ -101,6 +97,7 @@ def frappe_hrms_fixture(
         config={"admin-password-secret": admin_password_secret},
         trust=True,
     )
+    juju.grant_secret(admin_password_secret, FRAPPE_APP)
 
     juju.integrate(f"{FRAPPE_APP}:database", f"{mariadb}:database")
     juju.integrate(f"{FRAPPE_APP}:redis", f"{redis}:redis")
