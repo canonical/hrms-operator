@@ -89,7 +89,7 @@ class CharmState:
             str(charm.config.get("admin-password-secret", "")).strip() or None
         )
         if not admin_password_secret_id:
-            raise MissingConfigError("Configuration 'admin-password-secret' must be set ")
+            raise MissingConfigError("Configuration 'admin-password-secret' must be set")
         try:
             content = charm.model.get_secret(id=admin_password_secret_id).get_content()
             admin_password = content.get("password", "")

@@ -4,8 +4,10 @@
 """Unit tests for the Frappe HRMS charm."""
 
 import ops
+import pytest
 from pydantic import ValidationError
 from scenario import Container, Context, Exec, PeerRelation, Relation, State
+from scenario.errors import UncaughtCharmError
 
 from charm import HRMSCharm
 from unit.conftest import (
@@ -17,6 +19,7 @@ from unit.conftest import (
     make_execs,
     make_redis_relation,
 )
+from workload import WorkloadError
 
 
 def test_waiting_for_pebble():
@@ -45,8 +48,8 @@ def test_blocked_waiting_for_redis():
     assert "check the debug logs" in out.unit_status.message.lower()
 
 
-def test_waiting_when_redis_not_reachable_for_site_init():
-    """When the Redis relation data has no port yet, reconcile should wait (not block)."""
+def test_block_when_redis_not_reachable_for_site_init():
+    """When the Redis relation data has no port yet, reconcile should block."""
     ctx = Context(HRMSCharm, charm_root=".")
     c = make_container(site_exists=False)
     secret = make_admin_secret()
@@ -131,7 +134,7 @@ def test_creates_new_site_when_apps_missing():
     ] in install_commands
 
 
-def test_workload_error_blocks():
+def test_workload_error_raises():
     ctx = Context(HRMSCharm, charm_root=".")
     # chown fails during setup_assets, so the workload raises WorkloadError.
     c = Container(CONTAINER, can_connect=True, execs={Exec(["chown"], return_code=1)})
@@ -147,12 +150,12 @@ def test_workload_error_blocks():
         config={"admin-password-secret": secret.id},
         leader=True,
     )
-    out = ctx.run(ctx.on.pebble_ready(c), state)
-    assert isinstance(out.unit_status, ops.BlockedStatus)
-    assert "workload reconciliation failed" in out.unit_status.message.lower()
+    with pytest.raises(UncaughtCharmError) as exc_info:
+        ctx.run(ctx.on.pebble_ready(c), state)
+    assert isinstance(exc_info.value.__cause__, WorkloadError)
 
 
-def test_new_site_failure_blocks():
+def test_new_site_failure_raises():
     ctx = Context(HRMSCharm, charm_root=".")
     # No site exists, no apps installed, and bench new-site fails.
     c = Container(
@@ -177,12 +180,12 @@ def test_new_site_failure_blocks():
         config={"admin-password-secret": secret.id},
         leader=True,
     )
-    out = ctx.run(ctx.on.pebble_ready(c), state)
-    assert isinstance(out.unit_status, ops.BlockedStatus)
-    assert "workload reconciliation failed" in out.unit_status.message.lower()
+    with pytest.raises(UncaughtCharmError) as exc_info:
+        ctx.run(ctx.on.pebble_ready(c), state)
+    assert isinstance(exc_info.value.__cause__, WorkloadError)
 
 
-def test_install_app_failure_blocks():
+def test_install_app_failure_raises():
     ctx = Context(HRMSCharm, charm_root=".")
     # list-apps/install-app both fail: list-apps errors are swallowed (empty
     # apps) but the subsequent install-app failure raises WorkloadError.
@@ -208,9 +211,9 @@ def test_install_app_failure_blocks():
         config={"admin-password-secret": secret.id},
         leader=True,
     )
-    out = ctx.run(ctx.on.pebble_ready(c), state)
-    assert isinstance(out.unit_status, ops.BlockedStatus)
-    assert "workload reconciliation failed" in out.unit_status.message.lower()
+    with pytest.raises(UncaughtCharmError) as exc_info:
+        ctx.run(ctx.on.pebble_ready(c), state)
+    assert isinstance(exc_info.value.__cause__, WorkloadError)
 
 
 def test_installs_only_missing_apps():
@@ -269,6 +272,26 @@ def test_waiting_when_services_not_healthy(monkeypatch):
         leader=True,
     )
     monkeypatch.setattr("charm.FrappeWorkload.services_healthy", lambda self: False)
+    out = ctx.run(ctx.on.pebble_ready(c), state)
+    assert out.unit_status == ops.WaitingStatus("Waiting for services to become healthy")
+
+
+def test_waiting_when_check_not_up():
+    ctx = Context(HRMSCharm, charm_root=".")
+    # Services run, but the frontend-ready check has not passed yet.
+    c = make_container(site_exists=True, checks_healthy=False)
+    secret = make_admin_secret()
+    state = State(
+        containers=[c],
+        relations=[
+            make_database_relation(),
+            make_redis_relation(),
+            PeerRelation("hrms-peers"),
+        ],
+        secrets=[secret],
+        config={"admin-password-secret": secret.id},
+        leader=True,
+    )
     out = ctx.run(ctx.on.pebble_ready(c), state)
     assert out.unit_status == ops.WaitingStatus("Waiting for services to become healthy")
 

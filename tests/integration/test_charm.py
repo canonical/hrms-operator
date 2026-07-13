@@ -35,7 +35,8 @@ def test_webpage_accessible(
     gateway_address = get_gateway_address(juju, gateway_api_integrator)
     assert gateway_address, "Gateway address not found in gateway-api-integrator status message"
 
-    target_url = f"{parsed.scheme}://{gateway_address}{parsed.path or '/'}"
-    logger.info("Checking HRMS webpage at %s (Host: %s)", target_url, parsed.hostname)
+    logger.info(
+        "Checking HRMS webpage at %s (resolved to gateway %s)", ingress_url, gateway_address
+    )
 
-    assert_url_serves_ok(target_url, parsed.hostname)
+    assert_url_serves_ok(ingress_url, parsed.hostname, gateway_address)

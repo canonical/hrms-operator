@@ -21,7 +21,7 @@ from state import (
     MissingConfigError,
     MissingIntegrationError,
 )
-from workload import FrappeWorkload, WorkloadError
+from workload import FrappeWorkload
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,7 @@ class HRMSCharm(ops.CharmBase):
         for event in [
             self.on[CONTAINER_NAME].pebble_ready,
             self.on[CONTAINER_NAME].pebble_check_failed,
+            self.on[CONTAINER_NAME].pebble_check_recovered,
             self.on.config_changed,
             self.on.update_status,
             self._database.on.database_created,
@@ -93,30 +94,19 @@ class HRMSCharm(ops.CharmBase):
             return
 
         workload = FrappeWorkload(self._container)
+        workload.setup_assets()
+        apps_ready = workload.required_apps_installed()
+        if not apps_ready:
+            self.unit.status = ops.MaintenanceStatus("Setting up HRMS")
+            workload.setup_hrms(state)
 
-        try:
-            workload.setup_assets()
+        config_changed = workload.configure(state)
+        workload.reconcile_services(restart=config_changed)
 
-            apps_ready = workload.required_apps_installed()
-
-            if not apps_ready:
-                self.unit.status = ops.MaintenanceStatus("Setting up HRMS")
-                workload.setup_hrms(state)
-
-            config_changed = workload.configure(state)
-
-            workload.reconcile_services(restart=config_changed)
-
-            if workload.services_healthy():
-                self.unit.status = ops.ActiveStatus()
-            else:
-                self.unit.status = ops.WaitingStatus("Waiting for services to become healthy")
-
-        except WorkloadError:
-            self.unit.status = ops.BlockedStatus(
-                "Workload reconciliation failed; check the debug logs"
-            )
-            logger.exception("Workload reconciliation failed")
+        if workload.services_healthy():
+            self.unit.status = ops.ActiveStatus()
+        else:
+            self.unit.status = ops.WaitingStatus("Waiting for services to become healthy")
 
 
 if __name__ == "__main__":  # pragma: nocover

@@ -31,6 +31,12 @@ SERVICES = [
     "scheduler",
 ]
 
+CHECKS = [
+    "frontend-ready",
+    "backend-up",
+    "websocket-up",
+]
+
 
 class WorkloadError(Exception):
     """Raised when a workload operation fails."""
@@ -335,11 +341,11 @@ class FrappeWorkload:
                 raise WorkloadError(f"Failed to reconcile service {service_name!r}") from exc
 
     def services_healthy(self) -> bool:
-        """Check if all services have passed their health checks.
+        """Check if all services are running and all Pebble checks are healthy.
 
-        Returns True only if all defined services exist, are running, and
-        have healthy status. Returns False if any service is not running
-        or has a failed check.
+        Returns True only if all defined services exist and are running, and
+        every defined Pebble check is up. Returns False if any service is not
+        running or any check has not (yet) reached the up state.
         """
         try:
             services = self._container.get_services()
@@ -358,6 +364,25 @@ class FrappeWorkload:
                     "Service %r is not running (current=%s)",
                     service_name,
                     current,
+                )
+                return False
+
+        try:
+            checks = self._container.get_checks()
+        except ops.pebble.Error as e:
+            logger.warning("Failed to get check statuses: %s", e)
+            return False
+
+        for check_name in CHECKS:
+            check_info = checks.get(check_name)
+            if not check_info:
+                logger.warning("Check %r has no status", check_name)
+                return False
+            if check_info.status != ops.pebble.CheckStatus.UP:
+                logger.warning(
+                    "Check %r is not up (status=%s)",
+                    check_name,
+                    check_info.status,
                 )
                 return False
 
@@ -385,9 +410,20 @@ class FrappeWorkload:
         return self._push_if_changed(COMMON_SITE_CONFIG, new_content, make_dirs=True)
 
     def _update_pebble_layer(self, state: CharmState) -> None:
-        """Push the pebble layer defining all Frappe HRMS services."""
+        """Push the pebble layer defining all Frappe HRMS services.
+
+        Adds the layer and replans so that newly defined services and checks
+        are registered in the running plan.
+
+        Raises:
+            WorkloadError: If updating the pebble plan fails.
+        """
         layer = self._build_pebble_layer(state)
-        self._container.add_layer("frappe-hrms", layer, combine=True)
+        try:
+            self._container.add_layer("frappe-hrms", layer, combine=True)
+            self._container.replan()
+        except ops.pebble.Error as exc:
+            raise WorkloadError("Failed to update the pebble plan") from exc
 
     def _build_pebble_layer(self, state: CharmState) -> ops.pebble.LayerDict:
         """Construct the pebble layer dict for all Frappe services."""
