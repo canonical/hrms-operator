@@ -19,7 +19,7 @@ Like any Juju charm, this charm supports one-line deployment, configuration, int
 * Performance management
 * Integration with database, message broker and ingress.
 
-For information about how to deploy, integrate, and manage this charm, see the Official [Frappe HRMS Documentation](https://docs.frappe.io/hr).
+For information about how to deploy, integrate, and manage this charm, see the official [Frappe HRMS documentation](https://docs.frappe.io/hr).
 
 ## Get started
 
@@ -34,16 +34,8 @@ For information about how to deploy, integrate, and manage this charm, see the O
 juju deploy hrms
 juju integrate hrms mariadb-k8s
 juju integrate hrms redis-k8s
-juju integrate hrms traefik-k8s
+juju integrate hrms ingress-configurator
 ```
-
-## Integrations
-
-| Relation | Interface | Role | Description |
-|----------|-----------|------|-------------|
-| `database` | `mysql_client` | requires | MariaDB database (via data-platform-libs) |
-| `redis` | `redis` | requires | Redis for caching, queues, and Socket.IO |
-| `ingress` | `ingress` | requires | Ingress for external access |
 
 ## Learn more
 
