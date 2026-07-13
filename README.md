@@ -7,7 +7,7 @@ Avoid using this README file for information that is maintained or published els
 
 Use links instead.
 -->
-# Frappe HRMS Operator
+# `hrms-operator`
 <!-- Use this space for badges -->
 
 Frappe HRMS is an open-source, modern HR and payroll application built on the Frappe Framework. This charm deploys Frappe HRMS on Kubernetes, integrating with database, Redis, and ingress.
