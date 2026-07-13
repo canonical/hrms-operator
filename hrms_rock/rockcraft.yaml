@@ -51,10 +51,6 @@ parts:
       - libmariadb3
       - mariadb-client
       - git
-    permissions:
-      - path: home/frappe/frappe-bench
-        owner: 1000
-        group: 1000
     prime:
       - -home/frappe/frappe-bench/apps/*/.git
       - -home/frappe/frappe-bench/apps/*/.github
