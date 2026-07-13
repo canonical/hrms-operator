@@ -4,7 +4,6 @@
 name: frappe-hrms
 version: "16"
 base: ubuntu@26.04
-build-base: ubuntu@26.04
 summary: Frappe HRMS - Open Source HR and Payroll Software
 description: |
   Frappe HRMS is an open-source, modern HR and payroll software built on the
@@ -12,10 +11,9 @@ description: |
   lifecycle, leave and attendance, expense claims, performance management, and
   payroll processing.
 
-  This rock packages Frappe Framework v16, ERPNext v16, and HRMS v16 with all
+  This rock packages Frappe Framework, ERPNext, and HRMS with all
   required runtime services: gunicorn backend, nginx frontend, Socket.IO
-  websocket, background workers, and the Frappe scheduler. Targets MariaDB
-  as the database backend.
+  websocket, background workers, and the Frappe scheduler. 
 license: GPL-3.0
 
 platforms:
@@ -79,7 +77,7 @@ parts:
         export PATH=/snap/bin:/usr/local/bin:/usr/bin:/bin
 
         bench init \
-          --frappe-branch=version-16 \
+          --frappe-branch=version-${CRAFT_PROJECT_VERSION} \
           --python=/usr/bin/python3.14 \
           --no-procfile \
           --no-backups \
@@ -87,8 +85,8 @@ parts:
           /home/frappe/frappe-bench
         cd /home/frappe/frappe-bench
 
-        bench get-app erpnext --branch version-16
-        bench get-app hrms --branch version-16
+        bench get-app erpnext --branch version-${CRAFT_PROJECT_VERSION}
+        bench get-app hrms --branch version-${CRAFT_PROJECT_VERSION}
 
         bench build --production
 
@@ -98,7 +96,7 @@ parts:
       "
 
       mkdir -p "${CRAFT_PART_INSTALL}/home/frappe"
-      cp -r /home/frappe/frappe-bench "${CRAFT_PART_INSTALL}/home/frappe/"
+      cp -a /home/frappe/frappe-bench "${CRAFT_PART_INSTALL}/home/frappe/"
 
   nginx-config:
     plugin: dump
