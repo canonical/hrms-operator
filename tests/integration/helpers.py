@@ -51,5 +51,5 @@ def get_gateway_address(juju: jubilant.Juju, gateway_app: str) -> str:
 )
 def assert_url_serves_ok(url: str, hostname: str) -> None:
     """Assert if the URL returns HTTP 200."""
-    response = requests.get(url, headers={"Host": hostname}, verify=False, timeout=10)
+    response = requests.get(url, headers={"Host": hostname}, verify=False, timeout=10)  # nosec B501
     assert response.status_code == 200, f"Expected HTTP 200 from {url}, got {response.status_code}"
