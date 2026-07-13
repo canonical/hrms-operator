@@ -30,6 +30,7 @@ lint = [
   "pytest",
   "requests",
   "ruff",
+  "tenacity",
   "types-pyyaml",
   "types-requests",
 ]
@@ -53,7 +54,9 @@ integration = [
   "jubilant==1.11.0",
   "opcli @ git+https://github.com/canonical/charm-ci.git@v0.0.1-alpha.6",
   "pytest",
+  "pytest-jubilant>=2,<3",
   "requests",
+  "tenacity",
 ]
 
 [tool.uv]

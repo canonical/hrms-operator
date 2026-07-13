@@ -80,6 +80,7 @@ parts:
 
         bench init \
           --frappe-branch=version-16 \
+          --python=/usr/bin/python3.14 \
           --no-procfile \
           --no-backups \
           --skip-redis-config-generation \

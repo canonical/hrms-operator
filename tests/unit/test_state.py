@@ -1,0 +1,234 @@
+# Copyright 2025 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+"""Unit tests for the Frappe HRMS charm state module."""
+
+import ops
+import pytest
+from pydantic import ValidationError
+from scenario import Container, Context, Relation, Secret, State
+
+from charm import HRMSCharm
+from state import (
+    CharmState,
+    InvalidConfigError,
+    InvalidIntegrationError,
+    MissingConfigError,
+    MissingIntegrationError,
+)
+from unit.conftest import CONTAINER, make_admin_secret, make_database_relation, make_redis_relation
+
+
+def _load_charm_state(state: State) -> CharmState:
+    """Run CharmState.from_charm against a live charm instance built from ``state``."""
+    ctx = Context(HRMSCharm, charm_root=".")
+    with ctx(ctx.on.update_status(), state) as manager:
+        charm = manager.charm
+        return CharmState.from_charm(charm, charm._database, charm._redis)
+
+
+def test_all_integrations_ready():
+    secret = make_admin_secret("super-secret")
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=False)],
+        relations=[
+            make_database_relation(host="db.local", port=5432),
+            make_redis_relation(host="redis.local", port=6380),
+        ],
+        secrets=[secret],
+        config={"admin-password-secret": secret.id},
+    )
+
+    result = _load_charm_state(state)
+
+    assert result.site_name == "hrms"
+    assert result.database.host == "db.local"
+    assert result.database.port == 5432
+    assert result.database.user == "frappe_user"
+    assert result.database.password.get_secret_value() == "db-password"
+    assert result.database.database == "hrms_db"
+    assert result.redis_url == "redis://redis.local:6380"
+    assert result.admin_password.get_secret_value() == "super-secret"
+
+
+def test_missing_database_relation():
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=False)],
+    )
+    with pytest.raises(
+        MissingIntegrationError, match="Integration 'database' is required but not ready"
+    ):
+        _load_charm_state(state)
+
+
+def test_database_relation_without_endpoints():
+    database = Relation(
+        "database",
+        remote_app_name="mariadb-k8s",
+        remote_app_data={"username": "u", "password": "p", "database": "d"},
+    )
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=False)],
+        relations=[database],
+    )
+    with pytest.raises(
+        MissingIntegrationError, match="Integration 'database' is required but not ready"
+    ):
+        _load_charm_state(state)
+
+
+def test_database_endpoint_not_host_port():
+    database = Relation(
+        "database",
+        remote_app_name="mariadb-k8s",
+        remote_app_data={
+            "endpoints": "host-without-port",
+            "username": "u",
+            "password": "p",
+            "database": "d",
+        },
+    )
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=False)],
+        relations=[database],
+    )
+    with pytest.raises(
+        InvalidIntegrationError, match="Integration 'database' endpoint is not in 'host:port' form"
+    ):
+        _load_charm_state(state)
+
+
+def test_database_non_numeric_port():
+    database = Relation(
+        "database",
+        remote_app_name="mariadb-k8s",
+        remote_app_data={
+            "endpoints": "db.local:not-a-port",
+            "username": "u",
+            "password": "p",
+            "database": "d",
+        },
+    )
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=False)],
+        relations=[database],
+    )
+    with pytest.raises(ValidationError):
+        _load_charm_state(state)
+
+
+def test_missing_redis_relation():
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=False)],
+        relations=[make_database_relation()],
+    )
+    with pytest.raises(
+        MissingIntegrationError, match="Integration 'redis' is required but not ready"
+    ):
+        _load_charm_state(state)
+
+
+def test_redis_incomplete_without_port():
+    redis = Relation(
+        "redis",
+        remote_app_name="redis-k8s",
+        remote_units_data={0: {"hostname": "redis-host", "port": ""}},
+    )
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=False)],
+        relations=[make_database_relation(), redis],
+    )
+    with pytest.raises(
+        MissingIntegrationError, match="Integration 'redis' is required but not ready"
+    ):
+        _load_charm_state(state)
+
+
+def test_redis_malformed_port():
+    redis = Relation(
+        "redis",
+        remote_app_name="redis-k8s",
+        remote_units_data={0: {"hostname": "redis-host", "port": "not-a-port"}},
+    )
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=False)],
+        relations=[make_database_relation(), redis],
+    )
+    with pytest.raises(
+        InvalidIntegrationError, match="Integration 'redis' published a malformed URL"
+    ):
+        _load_charm_state(state)
+
+
+def test_missing_admin_password_config():
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=False)],
+        relations=[make_database_relation(), make_redis_relation()],
+    )
+    with pytest.raises(
+        MissingConfigError, match="Configuration 'admin-password-secret' must be set"
+    ):
+        _load_charm_state(state)
+
+
+def test_admin_password_secret_not_found():
+    orphan_secret = make_admin_secret()
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=False)],
+        relations=[make_database_relation(), make_redis_relation()],
+        config={"admin-password-secret": orphan_secret.id},
+    )
+    with pytest.raises(
+        InvalidConfigError,
+        match="Configuration 'admin-password-secret' refers to a secret that does not exist",
+    ):
+        _load_charm_state(state)
+
+
+def test_admin_password_secret_without_password_key():
+    secret = Secret({"not-password": "value"})
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=False)],
+        relations=[make_database_relation(), make_redis_relation()],
+        secrets=[secret],
+        config={"admin-password-secret": secret.id},
+    )
+    with pytest.raises(
+        InvalidConfigError,
+        match="Configuration 'admin-password-secret' must contain a non-empty 'password' value",
+    ):
+        _load_charm_state(state)
+
+
+def test_admin_password_secret_unreadable(monkeypatch):
+    original_get_secret = ops.Model.get_secret
+
+    def raise_on_id_lookup(self, *args, **kwargs):
+        if kwargs.get("id") is not None:
+            raise ops.ModelError("permission denied")
+        return original_get_secret(self, *args, **kwargs)
+
+    monkeypatch.setattr(ops.Model, "get_secret", raise_on_id_lookup)
+    secret = make_admin_secret()
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=False)],
+        relations=[make_database_relation(), make_redis_relation()],
+        secrets=[secret],
+        config={"admin-password-secret": secret.id},
+    )
+    with pytest.raises(
+        InvalidConfigError, match="Configuration 'admin-password-secret' could not be read"
+    ):
+        _load_charm_state(state)
