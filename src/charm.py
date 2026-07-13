@@ -97,7 +97,7 @@ class HRMSCharm(ops.CharmBase):
         try:
             workload.setup_assets()
 
-            apps_ready = workload.required_apps_installed(state.site_name)
+            apps_ready = workload.required_apps_installed()
 
             if not apps_ready:
                 self.unit.status = ops.MaintenanceStatus("Setting up HRMS")

@@ -37,8 +37,8 @@ containers:
   frappe-hrms:
     resource: hrms-image
     mounts:
-      - storage: sites
-        location: /home/frappe/frappe-bench/sites
+      - storage: site
+        location: /home/frappe/frappe-bench/sites/frappe-hrms
 
 resources:
   hrms-image:
@@ -46,7 +46,7 @@ resources:
     description: Frappe HRMS OCI image.
 
 storage:
-  sites:
+  site:
     type: filesystem
 
 requires:

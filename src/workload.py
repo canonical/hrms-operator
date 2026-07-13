@@ -12,11 +12,11 @@ from state import CharmState
 
 logger = logging.getLogger(__name__)
 
+SITE_NAME = "frappe-hrms"
 BENCH_DIR = "/home/frappe/frappe-bench"
 SITES_DIR = f"{BENCH_DIR}/sites"
+SITE_DIR = f"{SITES_DIR}/{SITE_NAME}"
 COMMON_SITE_CONFIG = f"{SITES_DIR}/common_site_config.json"
-NGINX_CONF = "/etc/nginx/conf.d/frappe.conf"
-NGINX_TEMPLATE = "/templates/nginx/frappe.conf.template"
 BENCH_BIN = f"{BENCH_DIR}/env/bin/bench"
 GUNICORN_BIN = f"{BENCH_DIR}/env/bin/gunicorn"
 NODE_BIN = "/bin/node"
@@ -62,29 +62,22 @@ class FrappeWorkload:
         return output
 
     def setup_assets(self) -> None:
-        """Prepare the mounted ``sites/`` volume for use after pod start.
+        """Prepare the mounted site data directory after pod start.
+
+        Only ``sites/<site>`` is a persistent volume; Kubernetes mounts it
+        owned by root, so it must be chowned to the ``frappe`` user before
+        bench can write the site into it.
 
         Raises:
-            WorkloadError: If the volume cannot be chowned or the assets
-                symlink cannot be created.
+            WorkloadError: If the volume cannot be chowned.
         """
         try:
             self._container.exec(
-                ["chown", "frappe:frappe", SITES_DIR],
+                ["chown", "frappe:frappe", SITE_DIR],
                 timeout=60,
             ).wait()
         except (ops.pebble.ExecError, ops.pebble.APIError) as exc:
-            raise WorkloadError(f"Failed to chown {SITES_DIR} to frappe") from exc
-
-        assets_link = f"{BENCH_DIR}/sites/assets"
-        assets_target = f"{BENCH_DIR}/assets"
-        try:
-            self._container.exec(
-                ["ln", "-sfn", assets_target, assets_link],
-                timeout=60,
-            ).wait()
-        except (ops.pebble.ExecError, ops.pebble.APIError) as exc:
-            raise WorkloadError("Failed to create sites/assets symlink") from exc
+            raise WorkloadError(f"Failed to chown {SITE_DIR} to frappe") from exc
 
     def configure(self, state: CharmState) -> bool:
         """Write all configuration files and update the pebble layer.
@@ -94,19 +87,18 @@ class FrappeWorkload:
             of the workload services is required).
         """
         common_changed = self._write_common_site_config(state)
-        nginx_changed = self._write_nginx_config(state)
         self._update_pebble_layer(state)
-        return common_changed or nginx_changed
+        return common_changed
 
-    def required_apps_installed(self, site_name: str) -> bool:
+    def required_apps_installed(self) -> bool:
         """Return True when all required apps are installed on the site."""
-        installed_apps = set(self._get_installed_apps(site_name))
+        installed_apps = set(self._get_installed_apps(SITE_NAME))
         required_apps = {"frappe", "erpnext", "hrms"}
         result = required_apps.issubset(installed_apps)
         if not result:
             logger.info(
                 "Required apps not present for site %r: installed=%s, required=%s",
-                site_name,
+                SITE_NAME,
                 installed_apps,
                 required_apps,
             )
@@ -121,29 +113,54 @@ class FrappeWorkload:
         Raises:
             WorkloadError: If any bench command fails.
         """
-        if "frappe" not in self._get_installed_apps(state.site_name):
-            self._run_bench_new_site(state, state.admin_password.get_secret_value())
+        if "frappe" not in self._get_installed_apps(SITE_NAME):
+            if not self._site_exists():
+                self._run_bench_new_site(state, state.admin_password.get_secret_value())
+            else:
+                logger.error(
+                    "Frappe site %r already exists on disk but the frappe app is not "
+                    "reported by the database; refusing to recreate the site to avoid "
+                    "data loss",
+                    SITE_NAME,
+                )
         else:
-            logger.info("Frappe site %r already exists", state.site_name)
+            logger.info("Frappe site %r already exists", SITE_NAME)
 
         self._write_common_site_config(state)
 
-        installed_apps = self._get_installed_apps(state.site_name)
+        installed_apps = self._get_installed_apps(SITE_NAME)
         logger.info(
             "Apps already installed on site %r: %s",
-            state.site_name,
+            SITE_NAME,
             ", ".join(installed_apps),
         )
 
         if "erpnext" not in installed_apps:
-            self._install_app(state.site_name, "erpnext", timeout=1200)
+            self._install_app(SITE_NAME, "erpnext", timeout=600)
         else:
-            logger.info("erpnext app already installed on site %r", state.site_name)
+            logger.info("erpnext app already installed on site %r", SITE_NAME)
 
         if "hrms" not in installed_apps:
-            self._install_app(state.site_name, "hrms", timeout=600)
+            self._install_app(SITE_NAME, "hrms", timeout=600)
         else:
-            logger.info("hrms app already installed on site %r", state.site_name)
+            logger.info("hrms app already installed on site %r", SITE_NAME)
+
+    def _site_exists(self) -> bool:
+        """Return True if the Frappe site has already been bootstrapped.
+
+        The check is based on the ``site_config.json`` marker written by
+        ``bench new-site`` on the persistent per-site volume. It deliberately
+        does not query the database, so a transient database outage cannot be
+        mistaken for a missing site.
+        """
+        try:
+            self._container.exec(
+                ["test", "-f", f"{SITE_DIR}/site_config.json"],
+                timeout=30,
+            ).wait()
+            return True
+        except ops.pebble.ExecError:
+            return False
 
     def _run_bench_new_site(self, state: CharmState, admin_password: str) -> None:
         """Bootstrap a new Frappe site via bench new-site.
@@ -159,13 +176,14 @@ class FrappeWorkload:
 
         logger.info(
             "Creating Frappe site %r via bench new-site --no-setup-db",
-            state.site_name,
+            SITE_NAME,
         )
         try:
             stdout, stderr = self._container.exec(
                 [
                     BENCH_BIN,
                     "new-site",
+                    "--force",
                     "--no-setup-db",
                     "--db-type",
                     "mariadb",
@@ -181,7 +199,7 @@ class FrappeWorkload:
                     db.password.get_secret_value(),
                     "--admin-password",
                     admin_password,
-                    state.site_name,
+                    SITE_NAME,
                 ],
                 working_dir=BENCH_DIR,
                 user="frappe",
@@ -196,7 +214,7 @@ class FrappeWorkload:
                 self._truncate_output_tail(exc.stdout),
                 self._truncate_output_tail(exc.stderr),
             )
-            raise WorkloadError(f"Failed to create site {state.site_name!r}") from exc
+            raise WorkloadError(f"Failed to create site {SITE_NAME!r}") from exc
 
     def _install_app(
         self,
@@ -366,16 +384,6 @@ class FrappeWorkload:
         new_content = json.dumps(config, indent=2, sort_keys=True)
         return self._push_if_changed(COMMON_SITE_CONFIG, new_content, make_dirs=True)
 
-    def _write_nginx_config(self, state: CharmState) -> bool:
-        """Render and write the nginx config. Returns True if content changed."""
-        try:
-            template = self._container.pull(NGINX_TEMPLATE).read()
-        except (ops.pebble.PathError, FileNotFoundError) as exc:
-            raise WorkloadError(f"Nginx template missing at {NGINX_TEMPLATE}.") from exc
-
-        rendered = template.replace("FRAPPE_SITE_NAME_HEADER", state.site_name)
-        return self._push_if_changed(NGINX_CONF, rendered, make_dirs=True)
-
     def _update_pebble_layer(self, state: CharmState) -> None:
         """Push the pebble layer defining all Frappe HRMS services."""
         layer = self._build_pebble_layer(state)
@@ -385,7 +393,7 @@ class FrappeWorkload:
         """Construct the pebble layer dict for all Frappe services."""
         bench_env = {
             "BENCH_DIR": BENCH_DIR,
-            "FRAPPE_SITE_NAME_HEADER": state.site_name,
+            "FRAPPE_SITE_NAME_HEADER": SITE_NAME,
         }
 
         return {

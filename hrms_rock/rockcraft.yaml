@@ -32,6 +32,7 @@ parts:
       - gnupg
       - ca-certificates
       - build-essential
+      - pipx
       - python3.14
       - python3.14-venv
       - python3.14-dev
@@ -53,7 +54,6 @@ parts:
       - git
     prime:
       - -home/frappe/frappe-bench/apps/*/.git
-      - -home/frappe/frappe-bench/apps/*/.github
       - -home/frappe/frappe-bench/apps/*/*/node_modules
       - -include/node
     overlay-script: |
@@ -61,16 +61,13 @@ parts:
       groupadd -R "${CRAFT_OVERLAY}" -g 1000 frappe
       useradd -R "${CRAFT_OVERLAY}" -M -u 1000 -g frappe -d /home/frappe -s /bin/bash frappe
     override-build: |
-      set -ex
-
       groupadd -g 1000 frappe
       useradd -u 1000 -g 1000 -m -d /home/frappe -s /bin/bash frappe
 
-      /usr/bin/python3.14 -m pip install --break-system-packages frappe-bench
-
       runuser -s /bin/bash frappe -c "
         set -ex
-        export PATH=/snap/bin:/usr/local/bin:/usr/bin:/bin
+        export PATH=/home/frappe/.local/bin:/snap/bin:/usr/local/bin:/usr/bin:/bin
+        pipx install --include-deps frappe-bench
 
         bench init \
           --frappe-branch=version-${CRAFT_PROJECT_VERSION} \
@@ -87,8 +84,6 @@ parts:
         bench build --production
 
         env/bin/pip install frappe-bench tzdata
-
-        mv sites/assets assets
       "
 
       mkdir -p "${CRAFT_PART_INSTALL}/home/frappe"
@@ -98,4 +93,4 @@ parts:
     plugin: dump
     source: templates/
     organize:
-      nginx-frappe.conf: templates/nginx/frappe.conf.template
+      nginx-frappe.conf: etc/nginx/conf.d/frappe.conf

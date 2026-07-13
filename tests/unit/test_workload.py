@@ -3,8 +3,6 @@
 
 """Unit tests for the Frappe HRMS workload helpers."""
 
-from pathlib import Path
-
 from scenario import Context, PeerRelation, State
 
 from charm import HRMSCharm
@@ -24,9 +22,9 @@ def test_truncate_output_tail():
     assert FrappeWorkload._truncate_output_tail("a" * 20, max_chars=5) == "aaaaa"
 
 
-def test_services_healthy_false_when_not_started(templates_path: Path):
+def test_services_healthy_false_when_not_started():
     ctx = Context(HRMSCharm, charm_root=".")
-    c = make_container(site_exists=True, templates_path=templates_path)
+    c = make_container(site_exists=True)
     secret = make_admin_secret()
     state = State(
         containers=[c],

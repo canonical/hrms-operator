@@ -42,7 +42,6 @@ def test_all_integrations_ready():
 
     result = _load_charm_state(state)
 
-    assert result.site_name == "hrms"
     assert result.database.host == "db.local"
     assert result.database.port == 5432
     assert result.database.user == "frappe_user"

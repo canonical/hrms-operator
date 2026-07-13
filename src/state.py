@@ -48,7 +48,6 @@ class CharmState:
 
     database: DatabaseConfig
     admin_password: SecretStr
-    site_name: str = Field(min_length=1)
     redis_url: str = Field(min_length=1)
 
     @classmethod
@@ -67,14 +66,11 @@ class CharmState:
             MissingConfigError: When required configuration is unset.
             InvalidConfigError: When configuration content is invalid.
         """
-        site_name = charm.app.name
-
         database = cls._fetch_database_details(database_requirer)
         redis_url = cls._fetch_redis_url(redis_requirer)
         admin_password = cls._fetch_admin_password(charm)
 
         return cls(
-            site_name=site_name,
             database=database,
             redis_url=redis_url,
             admin_password=admin_password,

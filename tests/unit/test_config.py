@@ -22,9 +22,9 @@ from unit.conftest import (
 from workload import COMMON_SITE_CONFIG, SITES_DIR
 
 
-def test_common_site_config_written(templates_path: Path):
+def test_common_site_config_written():
     ctx = Context(HRMSCharm, charm_root=".")
-    c = make_container(site_exists=True, templates_path=templates_path)
+    c = make_container(site_exists=True)
     secret = make_admin_secret()
     state = State(
         containers=[c],
@@ -51,36 +51,11 @@ def test_common_site_config_written(templates_path: Path):
     assert config["socketio_port"] == 9000
 
 
-def test_nginx_config_written(templates_path: Path):
-    ctx = Context(HRMSCharm, charm_root=".")
-    c = make_container(site_exists=True, templates_path=templates_path)
-    secret = make_admin_secret()
-    state = State(
-        containers=[c],
-        relations=[
-            make_database_relation(),
-            make_redis_relation(),
-            PeerRelation("hrms-peers"),
-        ],
-        secrets=[secret],
-        config={"admin-password-secret": secret.id},
-        leader=True,
-    )
-    out = ctx.run(ctx.on.pebble_ready(c), state)
-
-    root = out.get_container(CONTAINER).get_filesystem(ctx)
-    nginx_path = root / "etc/nginx/conf.d/frappe.conf"
-    assert nginx_path.exists(), "nginx frappe.conf should be written"
-    nginx_text = nginx_path.read_text()
-    assert "FRAPPE_SITE_NAME_HEADER" not in nginx_text, "placeholder should be substituted"
-    assert "hrms" in nginx_text, "site name should be rendered into the config"
-
-
-def test_common_config_not_rewritten_when_unchanged(templates_path: Path):
+def test_common_config_not_rewritten_when_unchanged(tmp_path: Path):
     """A second reconcile with identical state does not push common_site_config.json again."""
     # Back the sites dir with a real tmp dir so the written config persists
     # across the two reconcile runs below.
-    sites_source = templates_path / "sites"
+    sites_source = tmp_path / "sites"
     sites_source.mkdir()
     ctx = Context(HRMSCharm, charm_root=".")
     c = Container(
@@ -88,7 +63,6 @@ def test_common_config_not_rewritten_when_unchanged(templates_path: Path):
         can_connect=True,
         execs=make_execs(site_exists=True),
         mounts={
-            "templates": Mount(location="/templates", source=templates_path),
             "sites": Mount(location=SITES_DIR, source=sites_source),
         },
     )

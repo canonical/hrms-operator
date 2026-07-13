@@ -3,8 +3,6 @@
 
 """Unit tests for the Frappe HRMS charm."""
 
-from pathlib import Path
-
 import ops
 from pydantic import ValidationError
 from scenario import Container, Context, Exec, PeerRelation, Relation, State
@@ -69,12 +67,11 @@ def test_waiting_when_redis_not_reachable_for_site_init():
     assert "check the debug logs" in out.unit_status.message.lower()
 
 
-def test_existing_site_installs_missing_hrms_app(templates_path: Path):
+def test_existing_site_installs_missing_hrms_app():
     ctx = Context(HRMSCharm, charm_root=".")
     c = make_container(
         site_exists=True,
         installed_apps_output="frappe\nerpnext\n",
-        templates_path=templates_path,
     )
     secret = make_admin_secret()
     state = State(
@@ -94,13 +91,13 @@ def test_existing_site_installs_missing_hrms_app(templates_path: Path):
         args.command for args in ctx.exec_history[CONTAINER] if "install-app" in args.command
     ]
     assert install_commands == [
-        [f"{BENCH}/env/bin/bench", "--site", "hrms", "install-app", "hrms"]
+        [f"{BENCH}/env/bin/bench", "--site", "frappe-hrms", "install-app", "hrms"]
     ]
 
 
-def test_creates_new_site_when_apps_missing(templates_path: Path):
+def test_creates_new_site_when_apps_missing():
     ctx = Context(HRMSCharm, charm_root=".")
-    c = make_container(site_exists=False, installed_apps_output="", templates_path=templates_path)
+    c = make_container(site_exists=False, installed_apps_output="")
     secret = make_admin_secret()
     state = State(
         containers=[c],
@@ -121,42 +118,23 @@ def test_creates_new_site_when_apps_missing(templates_path: Path):
     assert [
         f"{BENCH}/env/bin/bench",
         "--site",
-        "hrms",
+        "frappe-hrms",
         "install-app",
         "erpnext",
     ] in install_commands
-    assert [f"{BENCH}/env/bin/bench", "--site", "hrms", "install-app", "hrms"] in install_commands
+    assert [
+        f"{BENCH}/env/bin/bench",
+        "--site",
+        "frappe-hrms",
+        "install-app",
+        "hrms",
+    ] in install_commands
 
 
 def test_workload_error_blocks():
     ctx = Context(HRMSCharm, charm_root=".")
     # chown fails during setup_assets, so the workload raises WorkloadError.
     c = Container(CONTAINER, can_connect=True, execs={Exec(["chown"], return_code=1)})
-    secret = make_admin_secret()
-    state = State(
-        containers=[c],
-        relations=[
-            make_database_relation(),
-            make_redis_relation(),
-            PeerRelation("hrms-peers"),
-        ],
-        secrets=[secret],
-        config={"admin-password-secret": secret.id},
-        leader=True,
-    )
-    out = ctx.run(ctx.on.pebble_ready(c), state)
-    assert isinstance(out.unit_status, ops.BlockedStatus)
-    assert "workload reconciliation failed" in out.unit_status.message.lower()
-
-
-def test_symlink_failure_blocks():
-    ctx = Context(HRMSCharm, charm_root=".")
-    # chown succeeds but the assets symlink creation fails.
-    c = Container(
-        CONTAINER,
-        can_connect=True,
-        execs={Exec(["chown"], return_code=0), Exec(["ln", "-sfn"], return_code=1)},
-    )
     secret = make_admin_secret()
     state = State(
         containers=[c],
@@ -182,7 +160,6 @@ def test_new_site_failure_blocks():
         can_connect=True,
         execs={
             Exec(["chown"], return_code=0),
-            Exec(["ln", "-sfn"], return_code=0),
             Exec(["test", "-f"], return_code=1),
             Exec([f"{BENCH}/env/bin/bench", "--site"], return_code=0, stdout=""),
             Exec([f"{BENCH}/env/bin/bench", "new-site"], return_code=1),
@@ -214,7 +191,6 @@ def test_install_app_failure_blocks():
         can_connect=True,
         execs={
             Exec(["chown"], return_code=0),
-            Exec(["ln", "-sfn"], return_code=0),
             Exec(["test", "-f"], return_code=1),
             Exec([f"{BENCH}/env/bin/bench", "new-site"], return_code=0),
             Exec([f"{BENCH}/env/bin/bench", "--site"], return_code=1),
@@ -237,34 +213,12 @@ def test_install_app_failure_blocks():
     assert "workload reconciliation failed" in out.unit_status.message.lower()
 
 
-def test_nginx_template_missing_blocks():
-    ctx = Context(HRMSCharm, charm_root=".")
-    # No templates mount, so the nginx template cannot be pulled.
-    c = make_container(site_exists=True)
-    secret = make_admin_secret()
-    state = State(
-        containers=[c],
-        relations=[
-            make_database_relation(),
-            make_redis_relation(),
-            PeerRelation("hrms-peers"),
-        ],
-        secrets=[secret],
-        config={"admin-password-secret": secret.id},
-        leader=True,
-    )
-    out = ctx.run(ctx.on.pebble_ready(c), state)
-    assert isinstance(out.unit_status, ops.BlockedStatus)
-    assert "workload reconciliation failed" in out.unit_status.message.lower()
-
-
-def test_installs_only_missing_apps(templates_path: Path):
+def test_installs_only_missing_apps():
     ctx = Context(HRMSCharm, charm_root=".")
     # hrms already present but erpnext missing: only erpnext is installed.
     c = make_container(
         site_exists=True,
         installed_apps_output="frappe\nhrms\n",
-        templates_path=templates_path,
     )
     secret = make_admin_secret()
     state = State(
@@ -286,22 +240,22 @@ def test_installs_only_missing_apps(templates_path: Path):
     assert [
         f"{BENCH}/env/bin/bench",
         "--site",
-        "hrms",
+        "frappe-hrms",
         "install-app",
         "erpnext",
     ] in install_commands
     assert [
         f"{BENCH}/env/bin/bench",
         "--site",
-        "hrms",
+        "frappe-hrms",
         "install-app",
         "hrms",
     ] not in install_commands
 
 
-def test_waiting_when_services_not_healthy(templates_path: Path, monkeypatch):
+def test_waiting_when_services_not_healthy(monkeypatch):
     ctx = Context(HRMSCharm, charm_root=".")
-    c = make_container(site_exists=True, templates_path=templates_path)
+    c = make_container(site_exists=True)
     secret = make_admin_secret()
     state = State(
         containers=[c],
@@ -319,9 +273,9 @@ def test_waiting_when_services_not_healthy(templates_path: Path, monkeypatch):
     assert out.unit_status == ops.WaitingStatus("Waiting for services to become healthy")
 
 
-def test_blocked_when_no_admin_password_secret(templates_path: Path):
+def test_blocked_when_no_admin_password_secret():
     ctx = Context(HRMSCharm, charm_root=".")
-    c = make_container(site_exists=True, templates_path=templates_path)
+    c = make_container(site_exists=True)
     state = State(
         containers=[c],
         relations=[
@@ -336,9 +290,9 @@ def test_blocked_when_no_admin_password_secret(templates_path: Path):
     assert "check the debug logs" in out.unit_status.message.lower()
 
 
-def test_blocked_when_state_validation_fails(templates_path: Path, monkeypatch):
+def test_blocked_when_state_validation_fails(monkeypatch):
     ctx = Context(HRMSCharm, charm_root=".")
-    c = make_container(site_exists=True, templates_path=templates_path)
+    c = make_container(site_exists=True)
     secret = make_admin_secret()
     state = State(
         containers=[c],
@@ -371,9 +325,9 @@ def test_blocked_when_state_validation_fails(templates_path: Path, monkeypatch):
     assert "check the debug logs" in out.unit_status.message.lower()
 
 
-def test_active_when_site_exists(templates_path: Path):
+def test_active_when_site_exists():
     ctx = Context(HRMSCharm, charm_root=".")
-    c = make_container(site_exists=True, templates_path=templates_path)
+    c = make_container(site_exists=True)
     secret = make_admin_secret()
     state = State(
         containers=[c],
