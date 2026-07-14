@@ -19,7 +19,7 @@ Like any Juju charm, this charm supports one-line deployment, configuration, int
 * Performance management
 * Integration with database, message broker and ingress.
 
-For information about how to deploy, integrate, and manage this charm, see the official [Frappe HRMS documentation](https://docs.frappe.io/hr).
+For information about the upstream software, see the official [Frappe HRMS documentation](https://docs.frappe.io/hr).
 
 ## Get started
 
