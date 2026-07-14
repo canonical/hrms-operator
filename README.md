@@ -1,12 +1,3 @@
-<!--
-Avoid using this README file for information that is maintained or published elsewhere, e.g.:
-
-* metadata.yaml > published on Charmhub
-* documentation > published on (or linked to from) Charmhub
-* detailed contribution guide > documentation or CONTRIBUTING.md
-
-Use links instead.
--->
 # `hrms-operator`
 <!-- Use this space for badges -->
 
@@ -25,8 +16,8 @@ For information about the upstream software, see the official [Frappe HRMS docum
 
 ### Prerequisites
 
-* A Juju controller connected to a Kubernetes cluster
-* The following charms available: `mariadb-k8s`, `redis-k8s`, and a K8s ingress charm
+* A Juju controller connected to a Kubernetes cluster.
+* The following charms available: `mariadb-k8s`, `redis-k8s`, and a K8s ingress charm. HRMS depends on `mariadb-k8s` and `redis-k8s` charms to start successfully.
 
 ### Deploy
 
