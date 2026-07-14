@@ -3,6 +3,10 @@
 
 """Unit tests for the Frappe HRMS workload helpers."""
 
+from unittest.mock import Mock
+
+import ops
+import pytest
 from scenario import Context, PeerRelation, State
 
 from charm import HRMSCharm
@@ -13,7 +17,7 @@ from unit.conftest import (
     make_database_relation,
     make_redis_relation,
 )
-from workload import FrappeWorkload
+from workload import SITE_NAME, FrappeWorkload, WorkloadError
 
 
 def test_truncate_output_tail():
@@ -41,3 +45,36 @@ def test_services_healthy_false_when_not_started():
         workload = FrappeWorkload(manager.charm.unit.get_container(CONTAINER))
         # No layer/services exist yet, so no service reports a healthy status.
         assert workload.services_healthy() is False
+
+
+def test_get_installed_apps_returns_empty_when_site_missing():
+    container = Mock()
+    proc = Mock()
+    proc.wait_output.side_effect = ops.pebble.ExecError(
+        ["bench", "--site", SITE_NAME, "list-apps"],
+        2,
+        "",
+        f"Error: 404 Not Found: {SITE_NAME} does not exist.\n",
+    )
+    container.exec.return_value = proc
+
+    workload = FrappeWorkload(container)
+
+    assert workload._get_installed_apps(SITE_NAME) == []
+
+
+def test_get_installed_apps_raises_on_unexpected_failure():
+    container = Mock()
+    proc = Mock()
+    proc.wait_output.side_effect = ops.pebble.ExecError(
+        ["bench", "--site", SITE_NAME, "list-apps"],
+        2,
+        "",
+        "unexpected failure",
+    )
+    container.exec.return_value = proc
+
+    workload = FrappeWorkload(container)
+
+    with pytest.raises(WorkloadError):
+        workload._get_installed_apps(SITE_NAME)
