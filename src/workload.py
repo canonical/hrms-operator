@@ -5,6 +5,7 @@
 
 import json
 import logging
+from collections.abc import Mapping
 
 import ops
 
@@ -21,6 +22,8 @@ BENCH_BIN = f"{BENCH_DIR}/env/bin/bench"
 GUNICORN_BIN = f"{BENCH_DIR}/env/bin/gunicorn"
 NODE_BIN = "/bin/node"
 SOCKETIO_JS = f"{BENCH_DIR}/apps/frappe/socketio.js"
+
+REQUIRED_FRAPPE_APPS = {"erpnext", "hrms"}
 
 SERVICES = [
     "backend",
@@ -93,22 +96,23 @@ class FrappeWorkload:
             of the workload services is required).
         """
         common_changed = self._write_common_site_config(state)
-        self._update_pebble_layer(state)
+        self._update_pebble_layer()
         return common_changed
 
     def required_apps_installed(self) -> bool:
         """Return True when all required apps are installed on the site."""
         installed_apps = set(self._get_installed_apps(SITE_NAME))
-        required_apps = {"frappe", "erpnext", "hrms"}
-        result = required_apps.issubset(installed_apps)
-        if not result:
+        required_apps = {"frappe", *REQUIRED_FRAPPE_APPS}
+        missing_apps = required_apps - installed_apps
+        if missing_apps:
             logger.info(
-                "Required apps not present for site %r: installed=%s, required=%s",
+                "Required apps not present for site %r: installed=%s, missing=%s",
                 SITE_NAME,
                 installed_apps,
-                required_apps,
+                sorted(missing_apps),
             )
-        return result
+            return False
+        return True
 
     def setup_hrms(self, state: CharmState) -> None:
         """Create a new Frappe site and install the erpnext and hrms apps.
@@ -119,7 +123,9 @@ class FrappeWorkload:
         Raises:
             WorkloadError: If any bench command fails.
         """
-        if "frappe" not in self._get_installed_apps(SITE_NAME):
+        installed_apps = set(self._get_installed_apps(SITE_NAME))
+
+        if "frappe" not in installed_apps:
             if not self._site_exists():
                 self._run_bench_new_site(state, state.admin_password.get_secret_value())
             else:
@@ -134,22 +140,11 @@ class FrappeWorkload:
 
         self._write_common_site_config(state)
 
-        installed_apps = self._get_installed_apps(SITE_NAME)
-        logger.info(
-            "Apps already installed on site %r: %s",
-            SITE_NAME,
-            ", ".join(installed_apps),
-        )
-
-        if "erpnext" not in installed_apps:
-            self._install_app(SITE_NAME, "erpnext", timeout=600)
-        else:
-            logger.info("erpnext app already installed on site %r", SITE_NAME)
-
-        if "hrms" not in installed_apps:
-            self._install_app(SITE_NAME, "hrms", timeout=600)
-        else:
-            logger.info("hrms app already installed on site %r", SITE_NAME)
+        for app_name in sorted(REQUIRED_FRAPPE_APPS):
+            if app_name not in installed_apps:
+                self._install_app(SITE_NAME, app_name, timeout=600)
+            else:
+                logger.info("%s app already installed on site %r", app_name, SITE_NAME)
 
     def _site_exists(self) -> bool:
         """Return True if the Frappe site has already been bootstrapped.
@@ -159,14 +154,7 @@ class FrappeWorkload:
         does not query the database, so a transient database outage cannot be
         mistaken for a missing site.
         """
-        try:
-            self._container.exec(
-                ["test", "-f", f"{SITE_DIR}/site_config.json"],
-                timeout=30,
-            ).wait()
-            return True
-        except ops.pebble.ExecError:
-            return False
+        return self._container.exists(f"{SITE_DIR}/site_config.json")
 
     def _run_bench_new_site(self, state: CharmState, admin_password: str) -> None:
         """Bootstrap a new Frappe site via bench new-site.
@@ -297,17 +285,6 @@ class FrappeWorkload:
                 user="frappe",
                 timeout=30,
             ).wait_output()
-            # bench list-apps outputs one app per line, commonly as:
-            # "<app> <version> <branch>".
-            raw_apps = [line.strip() for line in stdout.strip().split("\n") if line.strip()]
-            apps = [line.split()[0] for line in raw_apps if line.split()]
-            logger.debug(
-                "Installed apps for site %r: raw=%s normalized=%s",
-                site_name,
-                raw_apps,
-                apps,
-            )
-            return apps
         except ops.pebble.ExecError as exc:
             logger.warning(
                 "Failed to list apps on site %r: stdout=%s, stderr=%s",
@@ -315,7 +292,19 @@ class FrappeWorkload:
                 self._truncate_output_tail(exc.stdout),
                 self._truncate_output_tail(exc.stderr),
             )
-            return []
+            raise WorkloadError(f"Failed to list apps on site {site_name!r}") from exc
+
+        # bench list-apps outputs one app per line, commonly as:
+        # "<app> <version> <branch>".
+        raw_apps = [line.strip() for line in stdout.strip().split("\n") if line.strip()]
+        apps = [line.split()[0] for line in raw_apps if line.split()]
+        logger.debug(
+            "Installed apps for site %r: raw=%s normalized=%s",
+            site_name,
+            raw_apps,
+            apps,
+        )
+        return apps
 
     def reconcile_services(self, *, restart: bool = False) -> None:
         """Ensure all workload services are running with the current layer.
@@ -329,16 +318,22 @@ class FrappeWorkload:
         """
         if restart:
             logger.info("Configuration changed; restarting services")
-        services_info = self._container.get_services()
-        for service_name in SERVICES:
-            try:
-                if (info := services_info.get(service_name)) and info.is_running():
+        try:
+            services_info = self._container.get_services()
+            for service_name in SERVICES:
+                info = services_info.get(service_name)
+                if info is None:
+                    raise WorkloadError(
+                        f"Service {service_name!r} missing from pebble plan after replan"
+                    )
+
+                if info.is_running():
                     if restart:
                         self._container.restart(service_name)
-                else:
-                    self._container.start(service_name)
-            except ops.pebble.Error as exc:
-                raise WorkloadError(f"Failed to reconcile service {service_name!r}") from exc
+                    continue
+                self._container.start(service_name)
+        except ops.pebble.Error as exc:
+            raise WorkloadError("Failed to reconcile services") from exc
 
     def services_healthy(self) -> bool:
         """Check if all services are running and all Pebble checks are healthy.
@@ -353,19 +348,7 @@ class FrappeWorkload:
             logger.warning("Failed to get service statuses: %s", e)
             return False
 
-        for service_name in SERVICES:
-            service_status = services.get(service_name)
-            if not service_status:
-                logger.warning("Service %r has no status", service_name)
-                return False
-            if not service_status.is_running():
-                current = getattr(service_status, "current", "unknown")
-                logger.warning(
-                    "Service %r is not running (current=%s)",
-                    service_name,
-                    current,
-                )
-                return False
+        unhealthy_services = self._collect_unhealthy_services(services)
 
         try:
             checks = self._container.get_checks()
@@ -373,20 +356,43 @@ class FrappeWorkload:
             logger.warning("Failed to get check statuses: %s", e)
             return False
 
+        unhealthy_checks = self._collect_unhealthy_checks(checks)
+
+        if unhealthy_services:
+            logger.warning("Unhealthy services: %s", "; ".join(unhealthy_services))
+        if unhealthy_checks:
+            logger.warning("Unhealthy checks: %s", "; ".join(unhealthy_checks))
+        return not (unhealthy_services or unhealthy_checks)
+
+    @staticmethod
+    def _collect_unhealthy_services(
+        services: Mapping[str, ops.pebble.ServiceInfo],
+    ) -> list[str]:
+        """Collect service health failures for logging and status decisions."""
+        unhealthy_services: list[str] = []
+        for service_name in SERVICES:
+            service_status = services.get(service_name)
+            if service_status is None:
+                unhealthy_services.append(f"{service_name}: missing from plan")
+                continue
+            if not service_status.is_running():
+                unhealthy_services.append(f"{service_name}: current={service_status.current}")
+        return unhealthy_services
+
+    @staticmethod
+    def _collect_unhealthy_checks(
+        checks: Mapping[str, ops.pebble.CheckInfo],
+    ) -> list[str]:
+        """Collect check health failures for logging and status decisions."""
+        unhealthy_checks: list[str] = []
         for check_name in CHECKS:
             check_info = checks.get(check_name)
             if not check_info:
-                logger.warning("Check %r has no status", check_name)
-                return False
+                unhealthy_checks.append(f"{check_name}: missing status")
+                continue
             if check_info.status != ops.pebble.CheckStatus.UP:
-                logger.warning(
-                    "Check %r is not up (status=%s)",
-                    check_name,
-                    check_info.status,
-                )
-                return False
-
-        return True
+                unhealthy_checks.append(f"{check_name}: status={check_info.status}")
+        return unhealthy_checks
 
     def _write_common_site_config(self, state: CharmState) -> bool:
         """Write common_site_config.json. Returns True if content changed."""
@@ -409,7 +415,7 @@ class FrappeWorkload:
         new_content = json.dumps(config, indent=2, sort_keys=True)
         return self._push_if_changed(COMMON_SITE_CONFIG, new_content, make_dirs=True)
 
-    def _update_pebble_layer(self, state: CharmState) -> None:
+    def _update_pebble_layer(self) -> None:
         """Push the pebble layer defining all Frappe HRMS services.
 
         Adds the layer and replans so that newly defined services and checks
@@ -418,14 +424,14 @@ class FrappeWorkload:
         Raises:
             WorkloadError: If updating the pebble plan fails.
         """
-        layer = self._build_pebble_layer(state)
+        layer = self._build_pebble_layer()
         try:
             self._container.add_layer("frappe-hrms", layer, combine=True)
             self._container.replan()
         except ops.pebble.Error as exc:
             raise WorkloadError("Failed to update the pebble plan") from exc
 
-    def _build_pebble_layer(self, state: CharmState) -> ops.pebble.LayerDict:
+    def _build_pebble_layer(self) -> ops.pebble.LayerDict:
         """Construct the pebble layer dict for all Frappe services."""
         bench_env = {
             "BENCH_DIR": BENCH_DIR,

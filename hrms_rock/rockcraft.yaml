@@ -64,27 +64,27 @@ parts:
       groupadd -g 1000 frappe
       useradd -u 1000 -g 1000 -m -d /home/frappe -s /bin/bash frappe
 
-      runuser -s /bin/bash frappe -c "
-        set -ex
-        export PATH=/home/frappe/.local/bin:/snap/bin:/usr/local/bin:/usr/bin:/bin
-        pipx install --include-deps frappe-bench
+      runuser -s /bin/bash frappe <<EOF
+      set -ex
+      export PATH=/home/frappe/.local/bin:/snap/bin:/usr/local/bin:/usr/bin:/bin
+      pipx install --include-deps frappe-bench
 
-        bench init \
-          --frappe-branch=version-${CRAFT_PROJECT_VERSION} \
-          --python=/usr/bin/python3.14 \
-          --no-procfile \
-          --no-backups \
-          --skip-redis-config-generation \
-          /home/frappe/frappe-bench
-        cd /home/frappe/frappe-bench
+      bench init \
+        --frappe-branch=version-${CRAFT_PROJECT_VERSION} \
+        --python=/usr/bin/python3.14 \
+        --no-procfile \
+        --no-backups \
+        --skip-redis-config-generation \
+        /home/frappe/frappe-bench
+      cd /home/frappe/frappe-bench
 
-        bench get-app erpnext --branch version-${CRAFT_PROJECT_VERSION}
-        bench get-app hrms --branch version-${CRAFT_PROJECT_VERSION}
+      bench get-app erpnext --branch version-${CRAFT_PROJECT_VERSION}
+      bench get-app hrms --branch version-${CRAFT_PROJECT_VERSION}
 
-        bench build --production
+      bench build --production
 
-        env/bin/pip install frappe-bench tzdata
-      "
+      env/bin/pip install frappe-bench tzdata
+      EOF
 
       mkdir -p "${CRAFT_PART_INSTALL}/home/frappe"
       cp -a /home/frappe/frappe-bench "${CRAFT_PART_INSTALL}/home/frappe/"
