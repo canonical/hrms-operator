@@ -1,0 +1,96 @@
+# Copyright 2025 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+name: frappe-hrms
+version: "16"
+base: ubuntu@26.04
+summary: Frappe HRMS - Open Source HR and Payroll Software
+description: |
+  Frappe HRMS is an open-source, modern HR and payroll software built on the
+  Frappe Framework. It provides comprehensive HR management including employee
+  lifecycle, leave and attendance, expense claims, performance management, and
+  payroll processing.
+
+  This rock packages Frappe Framework, ERPNext, and HRMS with all
+  required runtime services: gunicorn backend, nginx frontend, Socket.IO
+  websocket, background workers, and the Frappe scheduler. 
+license: GPL-3.0
+
+platforms:
+  amd64:
+
+parts:
+  frappe-bench:
+    plugin: nil
+    build-snaps:
+      - node/24/stable
+    stage-snaps:
+      - node/24/stable
+    build-packages:
+      - git
+      - curl
+      - gnupg
+      - ca-certificates
+      - build-essential
+      - pipx
+      - python3.14
+      - python3.14-venv
+      - python3.14-dev
+      - libssl-dev
+      - libffi-dev
+      - libmariadb-dev
+      - libmariadb-dev-compat
+      - pkg-config
+      - libjpeg-dev
+      - zlib1g-dev
+    stage-packages:
+      - python3.14
+      - nginx
+      - ca-certificates
+      - libssl3
+      - libffi8
+      - libmariadb3
+      - mariadb-client
+      - git
+    prime:
+      - -home/frappe/frappe-bench/apps/*/.git
+      - -home/frappe/frappe-bench/apps/*/*/node_modules
+      - -include/node
+    overlay-script: |
+      chroot "${CRAFT_OVERLAY}" userdel -r ubuntu 2>/dev/null || true
+      groupadd -R "${CRAFT_OVERLAY}" -g 1000 frappe
+      useradd -R "${CRAFT_OVERLAY}" -M -u 1000 -g frappe -d /home/frappe -s /bin/bash frappe
+    override-build: |
+      groupadd -g 1000 frappe
+      useradd -u 1000 -g 1000 -m -d /home/frappe -s /bin/bash frappe
+
+      runuser -s /bin/bash frappe <<EOF
+      set -ex
+      export PATH=/home/frappe/.local/bin:/snap/bin:/usr/local/bin:/usr/bin:/bin
+      pipx install --include-deps frappe-bench
+
+      bench init \
+        --frappe-branch=version-${CRAFT_PROJECT_VERSION} \
+        --python=/usr/bin/python3.14 \
+        --no-procfile \
+        --no-backups \
+        --skip-redis-config-generation \
+        /home/frappe/frappe-bench
+      cd /home/frappe/frappe-bench
+
+      bench get-app erpnext --branch version-${CRAFT_PROJECT_VERSION}
+      bench get-app hrms --branch version-${CRAFT_PROJECT_VERSION}
+
+      bench build --production
+
+      env/bin/pip install frappe-bench tzdata
+      EOF
+
+      mkdir -p "${CRAFT_PART_INSTALL}/home/frappe"
+      cp -a /home/frappe/frappe-bench "${CRAFT_PART_INSTALL}/home/frappe/"
+
+  nginx-config:
+    plugin: dump
+    source: templates/
+    organize:
+      nginx-frappe.conf: etc/nginx/conf.d/frappe.conf

@@ -1,0 +1,25 @@
+# Copyright 2025 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+project: hrms-operator
+path: /home/ubuntu/proj
+kill-timeout: 110m
+warn-timeout: 5m
+backends:
+  integration-test:
+    type: integration-test
+    systems:
+    - ubuntu-24.04
+environment:
+  CONCIERGE: '$(HOST: echo "${CONCIERGE:-concierge.yaml}")'
+  OPCLI_GIT_REF: '$(HOST: echo "${OPCLI_GIT_REF:-main}")'
+
+integration-suites:
+  tests/integration/:
+    pytest-arguments-template: |
+      --juju-model test
+      -x
+    working-dir: ./
+    summary: integration tests
+    backends:
+    - integration-test

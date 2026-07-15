@@ -1,56 +1,107 @@
 # Copyright 2025 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Fixtures for charm integration tests."""
-
-import typing
-from collections.abc import Generator
+"""Fixtures for the integration tests."""
 
 import jubilant
 import pytest
 
+from integration.constants import (
+    CERTIFICATES_APP,
+    EXTERNAL_HOSTNAME,
+    FRAPPE_APP,
+    GATEWAY_APP,
+    GATEWAY_CLASS,
+    INGRESS_CONFIGURATOR_APP,
+    MARIADB_APP,
+    REDIS_APP,
+)
+from integration.helpers import all_settled
 
-@pytest.fixture(scope="module", name="charm")
-def charm_fixture(pytestconfig: pytest.Config):
-    """Get value from parameter charm-file."""
-    charm = pytestconfig.getoption("--charm-file")
-    use_existing = pytestconfig.getoption("--use-existing", default=False)
-    if not use_existing:
-        assert charm, "--charm-file must be set"
-    return charm
+DEPLOY_TIMEOUT = 10 * 60
 
 
-@pytest.fixture(scope="session", name="juju")
-def juju_fixture(request: pytest.FixtureRequest) -> Generator[jubilant.Juju, None, None]:
-    """Pytest fixture that wraps :meth:`jubilant.with_model`."""
+@pytest.fixture(scope="module", name="admin_password_secret")
+def admin_password_secret_fixture(juju: jubilant.Juju) -> str:
+    """Create a Juju secret holding the HRMS admin password."""
+    return juju.add_secret("admin-password-secret", {"password": "test-admin-password"})
 
-    def show_debug_log(juju: jubilant.Juju):
-        """Show debug log.
 
-        Args:
-            juju: the Juju object.
-        """
-        if request.session.testsfailed:
-            log = juju.debug_log(limit=1000)
-            print(log, end="")
+@pytest.fixture(scope="module", name="mariadb")
+def mariadb_fixture(juju: jubilant.Juju) -> str:
+    """Deploy mariadb-k8s."""
+    juju.deploy(MARIADB_APP, channel="latest/edge", trust=True)
+    return MARIADB_APP
 
-    use_existing = request.config.getoption("--use-existing", default=False)
-    if use_existing:
-        juju = jubilant.Juju()
-        yield juju
-        show_debug_log(juju)
-        return
 
-    model = request.config.getoption("--model")
-    if model:
-        juju = jubilant.Juju(model=model)
-        yield juju
-        show_debug_log(juju)
-        return
+@pytest.fixture(scope="module", name="redis")
+def redis_fixture(juju: jubilant.Juju) -> str:
+    """Deploy redis-k8s."""
+    juju.deploy(REDIS_APP, channel="latest/edge", trust=True)
+    return REDIS_APP
 
-    keep_models = typing.cast(bool, request.config.getoption("--keep-models"))
-    with jubilant.temp_model(keep=keep_models) as juju:
-        juju.wait_timeout = 10 * 60
-        yield juju
-        show_debug_log(juju)
-        return
+
+@pytest.fixture(scope="module", name="certificates")
+def certificates_fixture(juju: jubilant.Juju) -> str:
+    """Deploy self-signed-certificates."""
+    juju.deploy(CERTIFICATES_APP, channel="1/stable", trust=True)
+    return CERTIFICATES_APP
+
+
+@pytest.fixture(scope="module", name="gateway_api_integrator")
+def gateway_api_integrator_fixture(juju: jubilant.Juju, certificates: str) -> str:
+    """Deploy gateway-api-integrator with a TLS certificate provider."""
+    juju.deploy(
+        GATEWAY_APP,
+        channel="1/stable",
+        base="ubuntu@24.04",
+        config={"gateway-class": GATEWAY_CLASS},
+        trust=True,
+    )
+    juju.integrate(f"{GATEWAY_APP}:certificates", f"{certificates}:certificates")
+    return GATEWAY_APP
+
+
+@pytest.fixture(scope="module", name="ingress_configurator")
+def ingress_configurator_fixture(
+    juju: jubilant.Juju,
+    gateway_api_integrator: str,
+) -> str:
+    """Deploy ingress-configurator."""
+    juju.deploy(
+        INGRESS_CONFIGURATOR_APP,
+        channel="latest/edge",
+        base="ubuntu@24.04",
+        config={"hostname": EXTERNAL_HOSTNAME},
+        trust=True,
+    )
+    juju.integrate(f"{gateway_api_integrator}:gateway-route", INGRESS_CONFIGURATOR_APP)
+    return INGRESS_CONFIGURATOR_APP
+
+
+@pytest.fixture(scope="module", name="frappe_hrms")
+def frappe_hrms_fixture(
+    juju: jubilant.Juju,
+    charm_path: str,
+    resource_images: dict[str, str],
+    admin_password_secret: str,
+    mariadb: str,
+    redis: str,
+    ingress_configurator: str,
+) -> str:
+    """Deploy frappe-hrms, integrate its dependencies, and wait for active/idle."""
+    juju.deploy(
+        charm_path,
+        app=FRAPPE_APP,
+        resources=resource_images,
+        config={"admin-password-secret": admin_password_secret},
+        trust=True,
+    )
+    juju.grant_secret(admin_password_secret, FRAPPE_APP)
+
+    juju.integrate(f"{FRAPPE_APP}:database", f"{mariadb}:database")
+    juju.integrate(f"{FRAPPE_APP}:redis", f"{redis}:redis")
+    juju.integrate(f"{FRAPPE_APP}:ingress", f"{ingress_configurator}:ingress")
+
+    juju.wait(all_settled, timeout=DEPLOY_TIMEOUT)
+    return FRAPPE_APP

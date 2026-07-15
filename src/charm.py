@@ -3,105 +3,111 @@
 # Copyright 2025 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-# Learn more at: https://documentation.ubuntu.com/juju/3.6/howto/manage-charms/#build-a-charm
-
-"""Charm the service.
-
-Refer to the following post for a quick-start guide that will help you
-develop a new k8s charm using the Operator Framework:
-
-https://discourse.charmhub.io/t/4208
-"""
+"""Frappe HRMS Kubernetes Charm."""
 
 import logging
 import typing
 
 import ops
-from ops import pebble
+from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
+from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
+from charms.traefik_k8s.v2.ingress import IngressPerAppRequirer
+from pydantic import ValidationError
 
-# Log messages can be retrieved using juju debug-log
+from state import (
+    CharmState,
+    InvalidConfigError,
+    InvalidIntegrationError,
+    MissingConfigError,
+    MissingIntegrationError,
+)
+from workload import FrappeWorkload
+
 logger = logging.getLogger(__name__)
 
-VALID_LOG_LEVELS = ["info", "debug", "warning", "error", "critical"]
+CONTAINER_NAME = "frappe-hrms"
+DATABASE_RELATION = "database"
+REDIS_RELATION = "redis"
+INGRESS_RELATION = "ingress"
+PEER_RELATION = "hrms-peers"
+HTTP_PORT = 8080
 
 
-class Charm(ops.CharmBase):
-    """Charm implementing holistic reconciliation pattern.
+class HRMSCharm(ops.CharmBase):
+    """Frappe HRMS charm."""
 
-    The holistic pattern centralizes all state reconciliation logic into a single
-    reconcile method that is called from all event handlers. This ensures consistency
-    and reduces code duplication.
-    See https://documentation.ubuntu.com/ops/latest/explanation/holistic-vs-delta-charms/
-    for more information.
-    """
+    on = RedisRelationCharmEvents()  # type: ignore[assignment]
 
     def __init__(self, *args: typing.Any):
-        """Construct.
+        """Initialize the charm and register event handlers.
 
         Args:
-            args: Arguments passed to the CharmBase parent constructor.
+            args: Arguments to initialize the charm base.
         """
         super().__init__(*args)
-        self.framework.observe(self.on.httpbin_pebble_ready, self._on_httpbin_pebble_ready)
-        self.framework.observe(self.on.config_changed, self._on_config_changed)
 
-    def reconcile(self) -> None:
-        """Holistic reconciliation method.
+        self._database = DatabaseRequires(
+            self,
+            relation_name=DATABASE_RELATION,
+            database_name=self.app.name,
+        )
+        self._redis = RedisRequires(self, REDIS_RELATION)
+        self._ingress = IngressPerAppRequirer(
+            self,
+            relation_name=INGRESS_RELATION,
+            port=HTTP_PORT,
+            strip_prefix=True,
+        )
 
-        This method contains all the logic needed to reconcile the charm state.
-        It is idempotent and can be called from any event handler.
+        for event in [
+            self.on[CONTAINER_NAME].pebble_ready,
+            self.on[CONTAINER_NAME].pebble_check_failed,
+            self.on[CONTAINER_NAME].pebble_check_recovered,
+            self.on.config_changed,
+            self.on.update_status,
+            self._database.on.database_created,
+            self._database.on.endpoints_changed,
+            self.on.redis_relation_updated,
+            self._ingress.on.ready,
+            self._ingress.on.revoked,
+        ]:
+            self.framework.observe(event, self._reconcile)
 
-        Learn more about interacting with Pebble at
-        https://documentation.ubuntu.com/juju/3.6/reference/pebble/
-        """
-        # Validate configuration
-        log_level = str(self.model.config["log-level"]).lower()
-        if log_level not in VALID_LOG_LEVELS:
-            self.unit.status = ops.BlockedStatus(f"invalid log level: '{log_level}'")
+    def _reconcile(self, _: ops.EventBase) -> None:
+        """Reconcile the workload with the desired state."""
+        self._container = self.unit.get_container(CONTAINER_NAME)
+        if not self._container.can_connect():
+            self.unit.status = ops.WaitingStatus("Waiting for Pebble to be ready")
             return
 
-        # Get container
-        container = self.unit.get_container("httpbin")
-        if not container.can_connect():
-            self.unit.status = ops.WaitingStatus("waiting for Pebble API")
+        try:
+            state = CharmState.from_charm(self, self._database, self._redis)
+        except (
+            MissingIntegrationError,
+            InvalidIntegrationError,
+            MissingConfigError,
+            InvalidConfigError,
+            ValidationError,
+        ):
+            self.unit.status = ops.BlockedStatus("Invalid charm state; check the debug logs")
+            logger.exception("Failed to build charm state")
             return
 
-        # Configure and ensure workload is running
-        container.add_layer("httpbin", self._pebble_layer, combine=True)
-        container.replan()
+        workload = FrappeWorkload(self._container)
+        workload.setup_assets()
+        apps_ready = workload.required_apps_installed()
+        if not apps_ready:
+            self.unit.status = ops.MaintenanceStatus("Setting up HRMS")
+            workload.setup_hrms(state)
 
-        logger.debug("Workload reconciled with log level: %s", log_level)
-        # Learn more about statuses in the SDK docs:
-        # https://documentation.ubuntu.com/juju/latest/reference/status/index.html
-        self.unit.status = ops.ActiveStatus()
+        config_changed = workload.configure(state)
+        workload.reconcile_services(restart=config_changed)
 
-    def _on_httpbin_pebble_ready(self, _: ops.PebbleReadyEvent) -> None:
-        """Handle httpbin pebble ready event."""
-        self.reconcile()
-
-    def _on_config_changed(self, _: ops.ConfigChangedEvent) -> None:
-        """Handle changed configuration."""
-        self.reconcile()
-
-    @property
-    def _pebble_layer(self) -> pebble.LayerDict:
-        """Return a dictionary representing a Pebble layer."""
-        return {
-            "summary": "httpbin layer",
-            "description": "pebble config layer for httpbin",
-            "services": {
-                "httpbin": {
-                    "override": "replace",
-                    "summary": "httpbin",
-                    "command": "gunicorn -b 0.0.0.0:80 httpbin:app -k gevent",
-                    "startup": "enabled",
-                    "environment": {
-                        "GUNICORN_CMD_ARGS": f"--log-level {self.model.config['log-level']}"
-                    },
-                }
-            },
-        }
+        if workload.services_healthy():
+            self.unit.status = ops.ActiveStatus()
+        else:
+            self.unit.status = ops.WaitingStatus("Waiting for services to become healthy")
 
 
 if __name__ == "__main__":  # pragma: nocover
-    ops.main(Charm)
+    ops.main(HRMSCharm)

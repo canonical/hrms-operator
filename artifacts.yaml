@@ -1,0 +1,20 @@
+# Copyright 2025 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+version: 1
+rocks:
+- name: frappe-hrms
+  rockcraft-yaml: hrms_rock/rockcraft.yaml
+  platforms:
+  - arch: amd64
+charms:
+- name: hrms
+  charmcraft-yaml: charmcraft.yaml
+  channel: latest/edge
+  resources:
+    hrms-image:
+      type: oci-image
+      rock: frappe-hrms
+  platforms:
+  - arch: amd64
+snaps: []

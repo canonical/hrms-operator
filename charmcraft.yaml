@@ -1,29 +1,26 @@
 # Copyright 2025 Canonical Ltd.
 # See LICENSE file for licensing details.
 # This file configures Charmcraft.
-# See https://canonical-charmcraft.readthedocs-hosted.com/stable/howto/manage-charmcraft/ 
+# See https://canonical-charmcraft.readthedocs-hosted.com/stable/howto/manage-charmcraft/
 # for guidance.
 
 type: charm
-name: platform-engineering-charm-template
-title: Charm Template
-summary: A very short one-line summary of the charm.
+name: hrms
+title: Frappe HRMS
+summary: Open Source HR and Payroll Software
 links:
-  documentation: https://discourse.charmhub.io
-  issues: 
-    https://github.com/canonical/platform-engineering-charm-template/issues
-  source: https://github.com/canonical/platform-engineering-charm-template
+  documentation: https://docs.frappe.io/hr
+  issues: https://github.com/canonical/hrms-operator/issues
+  source: https://github.com/canonical/hrms-operator
   contact: https://launchpad.net/~canonical-is-devops
 
 description: |
-  A single sentence that says what the charm is, concisely and memorably.
+  Frappe HRMS is an open-source, modern HR and payroll software built on the
+  Frappe Framework. It provides comprehensive HR management including employee
+  lifecycle, leave and attendance, expense claims, performance management, and
+  payroll processing.
 
-  A paragraph of one to three short sentences, that describe what the charm does.
-
-  A third paragraph that explains what need the charm meets.
-
-  Finally, a paragraph that describes whom the charm is useful for.
-
+  This charm deploys Frappe HRMS on Kubernetes, integrating with MariaDB and Redis.
 
 base: ubuntu@24.04
 platforms:
@@ -34,32 +31,43 @@ parts:
     source: .
     plugin: uv
     build-snaps:
-    - astral-uv
+      - astral-uv
+
 containers:
-  httpbin:
-    resource: httpbin-image
+  frappe-hrms:
+    resource: hrms-image
+    mounts:
+      - storage: site
+        location: /home/frappe/frappe-bench/sites/frappe-hrms
 
-# This field populates the Resources tab on Charmhub.
 resources:
-  # An OCI image resource for each container listed above.
-  # You may remove this if your charm will run without a workload sidecar container.
-  httpbin-image:
+  hrms-image:
     type: oci-image
-    description: OCI image for httpbin
-    # The upstream-source field is ignored by Juju. It is included here as a reference
-    # so the integration testing suite knows which image to deploy during testing. This field
-    # is also used by the 'canonical/charming-actions' Github action for automated releasing.
-    upstream-source: kennethreitz/httpbin
+    description: Frappe HRMS OCI image.
 
-# See https://canonical-charmcraft.readthedocs-hosted.com/stable/reference/files/config-yaml-file/
-# for guidance.
+storage:
+  site:
+    type: filesystem
+
+requires:
+  database:
+    interface: mysql_client
+    limit: 1
+  redis:
+    interface: redis
+    limit: 1
+  ingress:
+    interface: ingress
+    limit: 1
+
 config:
   options:
-    # An example config option to customise the log level of the workload
-    log-level:
+    admin-password-secret:
+      type: secret
       description: |
-        Configures the log level of gunicorn. 
+        Juju secret URI containing the administrator password for the Frappe
+        HRMS site. The secret must contain a key named ``password``.
 
-        Acceptable values are: "info", "debug", "warning", "error" and "critical"
-      default: "info"
-      type: string
+peers:
+  hrms-peers:
+    interface: hrms-peers
