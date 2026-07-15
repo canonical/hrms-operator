@@ -11,13 +11,13 @@ run "basic_deploy" {
   variables {
     model_uuid = run.setup_tests.model_uuid
     channel    = "latest/edge"
-    # renovate: depName="netbox-k8s"
+    # renovate: depName="hrms"
     revision = 1
   }
 
   assert {
-    condition     = output.app_name == "netbox-k8s"
-    error_message = "netbox-k8s app_name did not match expected"
+    condition     = output.app_name == "hrms"
+    error_message = "hrms app_name did not match expected"
   }
 }
 
@@ -32,6 +32,6 @@ run "integration_test" {
 
   assert {
     condition     = data.external.app_status.result.status == "blocked"
-    error_message = "netbox-k8s app_name did not match expected"
+    error_message = "hrms app status did not match expected"
   }
 }

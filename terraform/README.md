@@ -1,8 +1,6 @@
-<!-- Remember to update this file for your charm -- replace __charm_name__ with the appropriate name. -->
+# HRMS Terraform module
 
-# __charm_name__ Terraform module
-
-This folder contains a base [Terraform][Terraform] module for the __charm_name__ charm.
+This folder contains a base [Terraform][Terraform] module for the hrms charm.
 
 The module uses the [Terraform Juju provider][Terraform Juju provider] to model the charm
 deployment onto any Kubernetes environment managed by [Juju][Juju].
@@ -17,9 +15,9 @@ deployment onto any Kubernetes environment managed by [Juju][Juju].
   the Juju application name.
 - **versions.tf** - Defines the Terraform provider version.
 
-## Using __charm_name__ base module in higher level modules
+## Using hrms base module in higher level modules
 
-If you want to use `__charm_name__` base module as part of your Terraform module, import it
+If you want to use `hrms` base module as part of your Terraform module, import it
 like shown below:
 
 ```text
@@ -27,33 +25,47 @@ data "juju_model" "my_model" {
   name = var.model
 }
 
-module "__charm_name__" {
-  source = "git::https://github.com/canonical/__charm_name__-operator//terraform"
-  
-  model = juju_model.my_model.name
+module "hrms" {
+  source = "git::https://github.com/canonical/hrms-operator//terraform"
+
+  model_uuid = data.juju_model.my_model.uuid
   # (Customize configuration variables here if needed)
 }
 ```
 
-Create integrations, for instance:
+The module deploys `hrms`, `mariadb-k8s`, and `redis-k8s` and creates the required
+integrations between them automatically. To add ingress, deploy Traefik and integrate
+it with the exposed `ingress` endpoint:
 
 ```text
-resource "juju_integration" "__charm_name__-loki" {
-  model = juju_model.my_model.name
-  application {
-    name     = module.__charm_name__.app_name
-    endpoint = module.__charm_name__.endpoints.logging
+resource "juju_application" "traefik" {
+  name       = "traefik-k8s"
+  model_uuid = data.juju_model.my_model.uuid
+
+  charm {
+    name    = "traefik-k8s"
+    channel = "latest/stable"
   }
+}
+
+resource "juju_integration" "hrms-ingress" {
+  model_uuid = data.juju_model.my_model.uuid
+
   application {
-    name     = "loki-k8s"
-    endpoint = "logging"
+    name     = module.hrms.app_name
+    endpoint = module.hrms.endpoints.requires.ingress
+  }
+
+  application {
+    name     = juju_application.traefik.name
+    endpoint = "ingress"
   }
 }
 ```
 
-The complete list of available integrations can be found [in the Integrations tab][__charm_name__-integrations].
+The complete list of available integrations can be found [in the Integrations tab][hrms-integrations].
 
 [Terraform]: https://developer.hashicorp.com/terraform
 [Terraform Juju provider]: https://registry.terraform.io/providers/juju/juju/latest
 [Juju]: https://juju.is
-[__charm_name__-integrations]: https://charmhub.io/__charm_name__/integrations
+[hrms-integrations]: https://charmhub.io/hrms/integrations
