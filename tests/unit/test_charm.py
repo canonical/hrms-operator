@@ -3,13 +3,16 @@
 
 """Unit tests for the Frappe HRMS charm."""
 
+from unittest import mock
+
 import ops
 import pytest
 from pydantic import ValidationError
-from scenario import Container, Context, Exec, PeerRelation, Relation, State
+from scenario import Container, Context, Exec, PeerRelation, State
 from scenario.errors import UncaughtCharmError
 
 from charm import HRMSCharm
+from state import CharmState
 from unit.conftest import (
     BENCH,
     CONTAINER,
@@ -17,7 +20,8 @@ from unit.conftest import (
     make_container,
     make_database_relation,
     make_execs,
-    make_redis_relation,
+    make_valkey_relation,
+    make_valkey_response,
 )
 from workload import WorkloadError
 
@@ -39,33 +43,38 @@ def test_blocked_waiting_for_database():
     assert "check the debug logs" in out.unit_status.message.lower()
 
 
-def test_blocked_waiting_for_redis():
+def test_blocked_waiting_for_valkey():
     ctx = Context(HRMSCharm, charm_root=".")
     c = Container(CONTAINER, can_connect=True, execs=make_execs())
-    state = State(containers=[c], relations=[make_database_relation()])
-    out = ctx.run(ctx.on.pebble_ready(c), state)
-    assert isinstance(out.unit_status, ops.BlockedStatus)
-    assert "check the debug logs" in out.unit_status.message.lower()
-
-
-def test_block_when_redis_not_reachable_for_site_init():
-    """When the Redis relation data has no port yet, reconcile should block."""
-    ctx = Context(HRMSCharm, charm_root=".")
-    c = make_container(site_exists=False)
     secret = make_admin_secret()
-    redis_no_port = Relation(
-        "redis",
-        remote_app_name="redis-k8s",
-        remote_units_data={0: {"hostname": "redis-host"}},  # port absent
-    )
     state = State(
         containers=[c],
-        relations=[make_database_relation(), redis_no_port, PeerRelation("hrms-peers")],
+        relations=[make_database_relation(), make_valkey_relation(), PeerRelation("hrms-peers")],
         secrets=[secret],
         config={"admin-password-secret": secret.id},
         leader=True,
     )
-    out = ctx.run(ctx.on.pebble_ready(c), state)
+    with mock.patch.object(CharmState, "_fetch_valkey_responses", return_value=[]):
+        out = ctx.run(ctx.on.pebble_ready(c), state)
+    assert isinstance(out.unit_status, ops.BlockedStatus)
+    assert "check the debug logs" in out.unit_status.message.lower()
+
+
+def test_block_when_valkey_not_reachable_for_site_init():
+    """When the Valkey response has no port yet, reconcile should block."""
+    ctx = Context(HRMSCharm, charm_root=".")
+    c = make_container(site_exists=False)
+    secret = make_admin_secret()
+    incomplete = make_valkey_response(endpoints="valkey-host")
+    state = State(
+        containers=[c],
+        relations=[make_database_relation(), make_valkey_relation(), PeerRelation("hrms-peers")],
+        secrets=[secret],
+        config={"admin-password-secret": secret.id},
+        leader=True,
+    )
+    with mock.patch.object(CharmState, "_fetch_valkey_responses", return_value=[incomplete]):
+        out = ctx.run(ctx.on.pebble_ready(c), state)
     assert isinstance(out.unit_status, ops.BlockedStatus)
     assert "check the debug logs" in out.unit_status.message.lower()
 
@@ -81,7 +90,7 @@ def test_existing_site_installs_missing_hrms_app():
         containers=[c],
         relations=[
             make_database_relation(),
-            make_redis_relation(),
+            make_valkey_relation(),
             PeerRelation("hrms-peers"),
         ],
         secrets=[secret],
@@ -106,7 +115,7 @@ def test_creates_new_site_when_apps_missing():
         containers=[c],
         relations=[
             make_database_relation(),
-            make_redis_relation(),
+            make_valkey_relation(),
             PeerRelation("hrms-peers"),
         ],
         secrets=[secret],
@@ -143,7 +152,7 @@ def test_workload_error_raises():
         containers=[c],
         relations=[
             make_database_relation(),
-            make_redis_relation(),
+            make_valkey_relation(),
             PeerRelation("hrms-peers"),
         ],
         secrets=[secret],
@@ -173,7 +182,7 @@ def test_new_site_failure_raises():
         containers=[c],
         relations=[
             make_database_relation(),
-            make_redis_relation(),
+            make_valkey_relation(),
             PeerRelation("hrms-peers"),
         ],
         secrets=[secret],
@@ -204,7 +213,7 @@ def test_install_app_failure_raises():
         containers=[c],
         relations=[
             make_database_relation(),
-            make_redis_relation(),
+            make_valkey_relation(),
             PeerRelation("hrms-peers"),
         ],
         secrets=[secret],
@@ -228,7 +237,7 @@ def test_installs_only_missing_apps():
         containers=[c],
         relations=[
             make_database_relation(),
-            make_redis_relation(),
+            make_valkey_relation(),
             PeerRelation("hrms-peers"),
         ],
         secrets=[secret],
@@ -264,7 +273,7 @@ def test_waiting_when_services_not_healthy(monkeypatch):
         containers=[c],
         relations=[
             make_database_relation(),
-            make_redis_relation(),
+            make_valkey_relation(),
             PeerRelation("hrms-peers"),
         ],
         secrets=[secret],
@@ -285,7 +294,7 @@ def test_waiting_when_check_not_up():
         containers=[c],
         relations=[
             make_database_relation(),
-            make_redis_relation(),
+            make_valkey_relation(),
             PeerRelation("hrms-peers"),
         ],
         secrets=[secret],
@@ -303,7 +312,7 @@ def test_blocked_when_no_admin_password_secret():
         containers=[c],
         relations=[
             make_database_relation(),
-            make_redis_relation(),
+            make_valkey_relation(),
             PeerRelation("hrms-peers"),
         ],
         leader=True,
@@ -321,7 +330,7 @@ def test_blocked_when_state_validation_fails(monkeypatch):
         containers=[c],
         relations=[
             make_database_relation(),
-            make_redis_relation(),
+            make_valkey_relation(),
             PeerRelation("hrms-peers"),
         ],
         secrets=[secret],
@@ -356,7 +365,7 @@ def test_active_when_site_exists():
         containers=[c],
         relations=[
             make_database_relation(),
-            make_redis_relation(),
+            make_valkey_relation(),
             PeerRelation("hrms-peers"),
         ],
         secrets=[secret],

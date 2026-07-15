@@ -14,7 +14,7 @@ from integration.constants import (
     GATEWAY_CLASS,
     INGRESS_CONFIGURATOR_APP,
     MARIADB_APP,
-    REDIS_APP,
+    VALKEY_APP,
 )
 from integration.helpers import all_settled
 
@@ -34,11 +34,11 @@ def mariadb_fixture(juju: jubilant.Juju) -> str:
     return MARIADB_APP
 
 
-@pytest.fixture(scope="module", name="redis")
-def redis_fixture(juju: jubilant.Juju) -> str:
-    """Deploy redis-k8s."""
-    juju.deploy(REDIS_APP, channel="latest/edge", trust=True)
-    return REDIS_APP
+@pytest.fixture(scope="module", name="valkey")
+def valkey_fixture(juju: jubilant.Juju) -> str:
+    """Deploy valkey."""
+    juju.deploy(VALKEY_APP, channel="9/edge", trust=True)
+    return VALKEY_APP
 
 
 @pytest.fixture(scope="module", name="certificates")
@@ -86,7 +86,7 @@ def frappe_hrms_fixture(
     resource_images: dict[str, str],
     admin_password_secret: str,
     mariadb: str,
-    redis: str,
+    valkey: str,
     ingress_configurator: str,
 ) -> str:
     """Deploy frappe-hrms, integrate its dependencies, and wait for active/idle."""
@@ -100,7 +100,7 @@ def frappe_hrms_fixture(
     juju.grant_secret(admin_password_secret, FRAPPE_APP)
 
     juju.integrate(f"{FRAPPE_APP}:database", f"{mariadb}:database")
-    juju.integrate(f"{FRAPPE_APP}:redis", f"{redis}:redis")
+    juju.integrate(f"{FRAPPE_APP}:valkey", f"{valkey}:valkey-client")
     juju.integrate(f"{FRAPPE_APP}:ingress", f"{ingress_configurator}:ingress")
 
     juju.wait(all_settled, timeout=DEPLOY_TIMEOUT)

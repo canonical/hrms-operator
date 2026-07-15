@@ -10,8 +10,12 @@ import typing
 
 import ops
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
-from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
 from charms.traefik_k8s.v2.ingress import IngressPerAppRequirer
+from dpcharmlibs.interfaces import (
+    RequirerCommonModel,
+    ResourceRequirerEventHandler,
+    ValkeyResponseModel,
+)
 from pydantic import ValidationError
 
 from state import (
@@ -27,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 CONTAINER_NAME = "frappe-hrms"
 DATABASE_RELATION = "database"
-REDIS_RELATION = "redis"
+VALKEY_RELATION = "valkey"
 INGRESS_RELATION = "ingress"
 PEER_RELATION = "hrms-peers"
 HTTP_PORT = 8080
@@ -35,8 +39,6 @@ HTTP_PORT = 8080
 
 class HRMSCharm(ops.CharmBase):
     """Frappe HRMS charm."""
-
-    on = RedisRelationCharmEvents()  # type: ignore[assignment]
 
     def __init__(self, *args: typing.Any):
         """Initialize the charm and register event handlers.
@@ -51,7 +53,12 @@ class HRMSCharm(ops.CharmBase):
             relation_name=DATABASE_RELATION,
             database_name=self.app.name,
         )
-        self._redis = RedisRequires(self, REDIS_RELATION)
+        self._valkey = ResourceRequirerEventHandler(
+            self,
+            VALKEY_RELATION,
+            requests=[RequirerCommonModel(resource="*")],
+            response_model=ValkeyResponseModel,
+        )
         self._ingress = IngressPerAppRequirer(
             self,
             relation_name=INGRESS_RELATION,
@@ -67,7 +74,9 @@ class HRMSCharm(ops.CharmBase):
             self.on.update_status,
             self._database.on.database_created,
             self._database.on.endpoints_changed,
-            self.on.redis_relation_updated,
+            self._valkey.on.resource_created,
+            self._valkey.on.endpoints_changed,
+            self._valkey.on.read_only_endpoints_changed,
             self._ingress.on.ready,
             self._ingress.on.revoked,
         ]:
@@ -81,7 +90,7 @@ class HRMSCharm(ops.CharmBase):
             return
 
         try:
-            state = CharmState.from_charm(self, self._database, self._redis)
+            state = CharmState.from_charm(self, self._database, self._valkey)
         except (
             MissingIntegrationError,
             InvalidIntegrationError,

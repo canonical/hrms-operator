@@ -407,9 +407,9 @@ class FrappeWorkload:
         config = {
             "db_host": state.database.host,
             "db_port": state.database.port,
-            "redis_cache": state.redis_url,
-            "redis_queue": state.redis_url,
-            "redis_socketio": state.redis_url,
+            "redis_cache": state.valkey_url,
+            "redis_queue": state.valkey_url,
+            "redis_socketio": state.valkey_url,
             "socketio_port": 9000,
             "serve_default_site": True,
             "developer_mode": 0,

@@ -15,7 +15,7 @@ from unit.conftest import (
     make_admin_secret,
     make_container,
     make_database_relation,
-    make_redis_relation,
+    make_valkey_relation,
 )
 from workload import SITE_NAME, FrappeWorkload, WorkloadError
 
@@ -34,7 +34,7 @@ def test_services_healthy_false_when_not_started():
         containers=[c],
         relations=[
             make_database_relation(),
-            make_redis_relation(),
+            make_valkey_relation(),
             PeerRelation("hrms-peers"),
         ],
         secrets=[secret],
