@@ -1,13 +1,4 @@
-<!--
-Avoid using this README file for information that is maintained or published elsewhere, e.g.:
-
-* metadata.yaml > published on Charmhub
-* documentation > published on (or linked to from) Charmhub
-* detailed contribution guide > documentation or CONTRIBUTING.md
-
-Use links instead.
--->
-# Frappe HRMS Operator
+# `hrms-operator`
 <!-- Use this space for badges -->
 
 Frappe HRMS is an open-source, modern HR and payroll application built on the Frappe Framework. This charm deploys Frappe HRMS on Kubernetes, integrating with database, Redis, and ingress.
@@ -19,14 +10,14 @@ Like any Juju charm, this charm supports one-line deployment, configuration, int
 * Performance management
 * Integration with database, message broker and ingress.
 
-For information about how to deploy, integrate, and manage this charm, see the official [Frappe HRMS documentation](https://docs.frappe.io/hr).
+For information about the upstream software, see the official [Frappe HRMS documentation](https://docs.frappe.io/hr).
 
 ## Get started
 
 ### Prerequisites
 
-* A Juju controller connected to a Kubernetes cluster
-* The following charms available: `mariadb-k8s`, `redis-k8s`, and a K8s ingress charm
+* A Juju controller connected to a Kubernetes cluster.
+* The following charms available: `mariadb-k8s`, `redis-k8s`, and a K8s ingress charm. HRMS depends on `mariadb-k8s` and `redis-k8s` charms to start successfully.
 
 ### Deploy
 

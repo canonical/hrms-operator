@@ -91,7 +91,7 @@ class CharmState:
         if not admin_password_secret_id:
             raise MissingConfigError("Configuration 'admin-password-secret' must be set")
         try:
-            content = charm.model.get_secret(id=admin_password_secret_id).get_content()
+            content = charm.model.get_secret(id=admin_password_secret_id).get_content(refresh=True)
             admin_password = content.get("password", "")
         except ops.SecretNotFoundError as e:
             raise InvalidConfigError(

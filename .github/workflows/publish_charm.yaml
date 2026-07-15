@@ -8,11 +8,12 @@ on:
 
 jobs:
   publish:
-    uses: canonical/charm-ci/.github/workflows/publish-artifacts.yml@v0.0.1-alpha.6
+    uses: canonical/charm-ci/.github/workflows/publish-artifacts.yml@v0.0.1-alpha.9
     permissions:
       actions: read
       contents: write
     with:
+      channel: 16/stable
       integration-workflow-name: integration_test.yaml
     secrets:
       CHARMHUB_TOKEN: ${{ secrets.CHARMHUB_TOKEN }}
