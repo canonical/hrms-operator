@@ -1,0 +1,18 @@
+# Copyright 2026 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+version_schema: 2
+
+changes:
+- title: Added Terraform module for deploying Frappe HRMS
+  author: swetha1654
+  type: minor
+  description: |
+    Added a Terraform module that deploys the Frappe HRMS charm alongside its
+    required dependencies (MariaDB and Redis) and wires up the integrations
+    automatically.
+  urls:
+    pr:
+      - "https://github.com/canonical/hrms-operator/pull/13"
+  visibility: public
+  highlight: false

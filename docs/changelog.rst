@@ -20,3 +20,8 @@ Changed
 
 - Updated publish workflow track to 16/edge.
 
+Added
+~~~~~
+
+- Terraform module to deploy Frappe HRMS with MariaDB and Redis.
+
