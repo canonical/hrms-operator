@@ -3,7 +3,7 @@
 
 run "setup_tests" {
   module {
-    source = "./setup"
+    source = "./tests/setup"
   }
 
   variables {
