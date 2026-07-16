@@ -174,24 +174,18 @@ when all applications show ``active``.
 Verify ingress and open the login page
 --------------------------------------
 
-First, retrieve the proxied endpoint from ``ingress-configurator``:
+Get the Gateway API address:
 
 .. code-block:: bash
 
-    INGRESS_URL=$(juju run ingress-configurator/leader get-proxied-endpoints --format json | jq -r '.results.endpoints | fromjson | .[0]')
-    echo "$INGRESS_URL"
-
-Next, get the Gateway API address:
-
-.. code-block:: bash
-
-    GATEWAY_IP=$(juju status --format json | jq -r '.applications."gateway-api-integrator".units."gateway-api-integrator/0"."public-address"')
+   GATEWAY_IP=$(juju status --format json | jq -r '.applications."gateway-api-integrator"."application-status".message | capture("Gateway addresses: (?<ip>[0-9.]+)").ip')
+   echo "$GATEWAY_IP"
 
 Verify that the ingress endpoint returns HTTP 200:
 
 .. code-block:: bash
 
-    curl -k --resolve "hrms.internal:443:$GATEWAY_IP" -o /dev/null -w '%{http_code}\n' "$INGRESS_URL"
+    curl -k --resolve "hrms.internal:443:$GATEWAY_IP" -o /dev/null -w '%{http_code}\n' https://hrms.internal/
 
 The command should print:
 
