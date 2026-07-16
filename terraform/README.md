@@ -31,16 +31,15 @@ module "hrms" {
 ```
 
 The module deploys `hrms`, `mariadb-k8s`, and `redis-k8s` and creates the required
-integrations between them automatically. To add ingress, deploy Traefik and integrate
-it with the exposed `ingress` endpoint:
+integrations between them automatically. To add ingress, deploy `ingress-configurator` and integrate it with the exposed `ingress` endpoint:
 
 ```text
-resource "juju_application" "traefik" {
-  name       = "traefik-k8s"
+resource "juju_application" "ingress_configurator" {
+  name       = "ingress-configurator"
   model_uuid = data.juju_model.my_model.uuid
 
   charm {
-    name    = "traefik-k8s"
+    name    = "ingress-configurator"
     channel = "latest/stable"
   }
 }
@@ -54,7 +53,7 @@ resource "juju_integration" "hrms-ingress" {
   }
 
   application {
-    name     = juju_application.traefik.name
+    name     = juju_application.ingress_configurator.name
     endpoint = "ingress"
   }
 }
