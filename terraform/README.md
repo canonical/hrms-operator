@@ -7,10 +7,10 @@ deployment onto any Kubernetes environment managed by [Juju][Juju].
 
 ## Module structure
 
-- **product/main.tf** - Defines the Juju applications and integrations to deploy.
+- **product/main.tf** - Defines the Juju applications to deploy and the integrations.
 - **product/variables.tf** - Allows customization of the deployment and charm config.
 - **product/outputs.tf** - Exposes deployed app names and relation endpoints.
-- **product/versions.tf** - Defines Terraform and provider version constraints.
+- **product/versions.tf** - Defines Terraform provider version.
 
 ## Using hrms base module in higher level modules
 
@@ -30,8 +30,7 @@ module "hrms" {
 }
 ```
 
-The module deploys `hrms`, `mariadb-k8s`, and `redis-k8s` and creates the required
-integrations between them automatically. To add ingress, deploy `ingress-configurator` and integrate it with the exposed `ingress` endpoint:
+Create integrations, for instance:
 
 ```text
 resource "juju_application" "ingress_configurator" {
