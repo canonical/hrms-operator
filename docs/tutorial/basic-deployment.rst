@@ -42,29 +42,48 @@ should have at least 4 CPU cores, 8 GB of RAM, and 50 GB of disk space.
 This tutorial requires the following software to be installed on your working station
 (either locally or in the Multipass VM):
 
-- Juju
-- K8s
+This tutorial requires the following software to be installed in your working
+environment:
 
-Use `Concierge <https://github.com/canonical/concierge>`_ to set up Juju and K8s:
+* Juju 3.6+
+* Canonical Kubernetes 1.32+
 
-.. code-block::
+Use `Concierge <https://github.com/canonical/concierge>`_ to set up Juju,
+and Canonical Kubernetes:
 
-    sudo snap install --classic concierge
-    sudo concierge prepare -p k8s
+.. code-block:: shell
 
-This first command installs Concierge, and the second command uses Concierge to install
-and configure Juju and Kubernetes.
+   VM_IP=$(hostname -I | awk '{print $1}')
+   sudo snap install --classic concierge
+   cat << EOF > concierge.yaml
+   providers:
+     k8s:
+       enable: true
+       bootstrap: true
+       bootstrap-constraints:
+         root-disk: "5G"
+       features:
+         load-balancer:
+           l2-mode: "true"
+           cidrs: "$VM_IP/28"
+         local-storage: {}
+         network: {}
+         ingress:
 
-For this tutorial, Juju must be bootstrapped to a controller backed by K8s.
-Concierge should complete this step for you, and you can verify it by running
-``juju controllers``.
+   host:
+     snaps:
+       aws-cli:
+   EOF
+   sudo concierge prepare -c concierge.yaml
 
-If Concierge did not perform the bootstrap, run:
+Once the command succeeds, you have a working environment with Juju, and
+Kubernetes working. You can confirm this by running ``juju controllers``, which
+should return the controller:
 
-.. code-block::
+.. code-block:: text
 
-    juju bootstrap k8s tutorial-controller
-
+   Controller      Model    User   Access     Cloud/Region         Models  Nodes    HA  Version
+   concierge-k8s   testing  admin  superuser  k8s                       2      1     -  3.6.24
 
 To be able to work inside the Multipass VM, log in with the following command:
 
@@ -115,7 +134,7 @@ Deploy the required backing services first, then deploy the Frappe HRMS charm:
     juju deploy self-signed-certificates --channel 1/stable --trust
     juju deploy gateway-api-integrator --channel 1/stable \
         --config gateway-class=cilium --trust
-    juju deploy ingress-configurator --channel latest/edge \
+    juju deploy ingress-configurator --channel stable/edge \
         --config hostname=hrms.internal --trust
     juju deploy hrms --channel 16/edge --trust --config admin-password-secret=$SECRET_ID
 
@@ -193,29 +212,21 @@ The command should print:
 
     200
 
+To view the website, add ``hrms.internal`` to ``/etc/hosts``:
+
+.. code-block:: bash
+
+    echo "$GATEWAY_IP hrms.internal" | sudo tee -a /etc/hosts
+
 Finally, open the ingress URL in your browser:
 
 .. code-block:: text
 
     https://hrms.internal/
 
-If your workstation does not already resolve ``hrms.internal``, add it to
-``/etc/hosts`` first:
-
-.. code-block:: bash
-
-    echo "$GATEWAY_IP hrms.internal" | sudo tee -a /etc/hosts
-
 Because this tutorial uses ``self-signed-certificates``, your browser may warn
 that the certificate is not trusted. Accept the warning for this local test
 environment and confirm that the Frappe HRMS login page loads.
-
-If the deployment stays in a waiting or maintenance state for longer than expected,
-inspect the charm logs with:
-
-.. code-block:: bash
-
-    juju debug-log --include unit-hrms-0 --level INFO --tail
 
 Clean up the environment
 ------------------------
@@ -227,7 +238,7 @@ To remove the tutorial model, run:
 
 .. code-block:: bash
 
-    juju destroy-model hrms-tutorial --destroy-storage --no-prompt
+    juju destroy-model hrms-tutorial --destroy-storage
 
 You can clean up your environment by following this guide:
 `Tear down your test environment <https://documentation.ubuntu.com/juju/3.6/howto/manage-your-juju-deployment/tear-down-your-juju-deployment-local-testing-and-development/>`_
