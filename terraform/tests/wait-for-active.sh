@@ -14,13 +14,13 @@ if [ -z "$MODEL_UUID" ] || [ -z "$APP_NAME" ] || [ -z "$TIMEOUT" ]; then
 	exit 1
 fi
 
-if ! juju show-model "$MODEL_UUID" &>/dev/null; then
+if ! juju show-model "$MODEL_UUID" &> /dev/null; then
 	echo '{"status": "model_not_found"}'
 	echo "[$(date)] model not found: $MODEL_UUID" >> $LOG
 	exit
 fi
 
-if ! juju show-application "$APP_NAME" --model "$MODEL_UUID" &>/dev/null; then
+if ! juju show-application "$APP_NAME" --model "$MODEL_UUID" &> /dev/null; then
 	echo '{"status": "app_not_found"}'
 	echo "[$(date)] app not found: $APP_NAME" >> $LOG
 	exit
