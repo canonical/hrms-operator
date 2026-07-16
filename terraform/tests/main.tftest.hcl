@@ -3,35 +3,32 @@
 
 run "setup_tests" {
   module {
-    source = "./tests/setup"
+    source = "./setup"
   }
-}
 
-run "basic_deploy" {
   variables {
-    model_uuid = run.setup_tests.model_uuid
-    channel    = "latest/edge"
+    channel = "16/edge"
     # renovate: depName="hrms"
-    revision = 1
+    revision = 3
+
+    database = {
+      # renovate: depName="mariadb-k8s"
+      revision = 8
+    }
+
+    redis = {
+      # renovate: depName="redis-k8s"
+      revision = 42
+    }
   }
 
   assert {
-    condition     = output.app_name == "hrms"
-    error_message = "hrms app_name did not match expected"
-  }
-}
-
-run "integration_test" {
-  variables {
-    model_uuid = run.setup_tests.model_uuid
-  }
-
-  module {
-    source = "./tests/integration_test"
+    condition     = output.application == "hrms"
+    error_message = "hrms application name did not match expected"
   }
 
   assert {
-    condition     = data.external.app_status.result.status == "blocked"
-    error_message = "hrms app status did not match expected"
+    condition     = output.status == "active"
+    error_message = "hrms application status is not active"
   }
 }

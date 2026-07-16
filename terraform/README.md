@@ -7,13 +7,10 @@ deployment onto any Kubernetes environment managed by [Juju][Juju].
 
 ## Module structure
 
-- **main.tf** - Defines the Juju application to be deployed.
-- **variables.tf** - Allows customization of the deployment. Also models the charm configuration, 
-  except for exposing the deployment options (Juju model name, channel or application name).
-- **output.tf** - Integrates the module with other Terraform modules, primarily
-  by defining potential integration endpoints (charm integrations), but also by exposing
-  the Juju application name.
-- **versions.tf** - Defines the Terraform provider version.
+- **product/main.tf** - Defines the Juju applications and integrations to deploy.
+- **product/variables.tf** - Allows customization of the deployment and charm config.
+- **product/outputs.tf** - Exposes deployed app names and relation endpoints.
+- **product/versions.tf** - Defines Terraform and provider version constraints.
 
 ## Using hrms base module in higher level modules
 
@@ -26,7 +23,7 @@ data "juju_model" "my_model" {
 }
 
 module "hrms" {
-  source = "git::https://github.com/canonical/hrms-operator//terraform"
+  source = "git::https://github.com/canonical/hrms-operator//terraform/product"
 
   model_uuid = data.juju_model.my_model.uuid
   # (Customize configuration variables here if needed)
