@@ -1,12 +1,13 @@
 # Copyright 2025 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-output "app_name" {
+output "application" {
   description = "Name of the deployed application."
-  value       = juju_application.netbox-k8s.name
+  value       = juju_application.hrms.name
 }
 
-output "endpoints" {
+output "requires" {
+  description = "Map of the requires endpoints consumed by the charm."
   value = {
     ingress = "ingress"
   }

@@ -4,23 +4,23 @@
 variable "app_name" {
   description = "Name of the application in the Juju model."
   type        = string
-  default     = "netbox-k8s"
+  default     = "hrms"
 }
 
 variable "base" {
   description = "The operating system on which to deploy"
   type        = string
-  default     = "ubuntu@22.04"
+  default     = "ubuntu@24.04"
 }
 
 variable "channel" {
   description = "The channel to use when deploying a charm."
   type        = string
-  default     = "latest/stable"
+  default     = "16/edge"
 }
 
 variable "config" {
-  description = "Application config. Details about available options can be found at https://charmhub.io/netbox-k8s/configurations."
+  description = "Application config. Details about available options can be found at https://charmhub.io/hrms/configurations."
   type        = map(string)
   default     = {}
 }
@@ -52,4 +52,32 @@ variable "units" {
   description = "Number of units to deploy"
   type        = number
   default     = 1
+}
+
+variable "database" {
+  description = "Configuration for the MariaDB application."
+  type = object({
+    app_name    = optional(string, "mariadb-k8s")
+    channel     = optional(string, "latest/edge")
+    config      = optional(map(string), {})
+    constraints = optional(string, "")
+    revision    = optional(number)
+    base        = optional(string, "ubuntu@24.04")
+    units       = optional(number, 1)
+  })
+  default = {}
+}
+
+variable "redis" {
+  description = "Configuration for the Redis application."
+  type = object({
+    app_name    = optional(string, "redis-k8s")
+    channel     = optional(string, "latest/edge")
+    config      = optional(map(string), {})
+    constraints = optional(string, "")
+    revision    = optional(number)
+    base        = optional(string, "ubuntu@22.04")
+    units       = optional(number, 1)
+  })
+  default = {}
 }
