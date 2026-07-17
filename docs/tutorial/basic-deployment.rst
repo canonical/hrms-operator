@@ -92,6 +92,11 @@ should return the controller:
    Controller      Model    User   Access     Cloud/Region         Models  Nodes    HA  Version
    concierge-k8s   testing  admin  superuser  k8s                       2      1     -  3.6.24
 
+If Concierge did not perform the bootstrap, run:
+
+.. code-block::
+
+    juju bootstrap k8s tutorial-controller
 
 .. SPREAD SKIP END
 
