@@ -39,11 +39,18 @@ should have at least 4 CPU cores, 8 GB of RAM, and 50 GB of disk space.
         multipass launch 24.04 --name charm-tutorial-vm --cpus 4 --memory 8G --disk 50G
 
 
+To be able to work inside the Multipass VM, log in with the following command:
+
+.. code-block:: bash
+
+    multipass shell charm-tutorial-vm 
+
+.. note::
+
+    If you're working locally, you don't need to do this step.
+
 This tutorial requires the following software to be installed on your working station
 (either locally or in the Multipass VM):
-
-This tutorial requires the following software to be installed in your working
-environment:
 
 * Juju 3.6+
 * Canonical Kubernetes 1.32+
@@ -85,15 +92,6 @@ should return the controller:
    Controller      Model    User   Access     Cloud/Region         Models  Nodes    HA  Version
    concierge-k8s   testing  admin  superuser  k8s                       2      1     -  3.6.24
 
-To be able to work inside the Multipass VM, log in with the following command:
-
-.. code-block:: bash
-
-    multipass shell charm-tutorial-vm 
-
-.. note::
-
-    If you're working locally, you don't need to do this step.
 
 .. SPREAD SKIP END
 
@@ -112,7 +110,8 @@ Create the admin password secret
 
 The charm reads the initial Frappe HRMS administrator password from the
 ``admin-password-secret`` configuration option. Create the secret before deploying
-the charm, and save the returned secret ID:
+the charm, and save the returned secret ID (For production use, replace the 
+example password with a stronger value before creating the secret):
 
 .. code-block:: bash
 
@@ -134,9 +133,14 @@ Deploy the required backing services first, then deploy the Frappe HRMS charm:
     juju deploy self-signed-certificates --channel 1/stable --trust
     juju deploy gateway-api-integrator --channel 1/stable \
         --config gateway-class=cilium --trust
-    juju deploy ingress-configurator --channel stable/edge \
+    juju deploy ingress-configurator --channel latest/stable \
         --config hostname=hrms.internal --trust
     juju deploy hrms --channel 16/edge --trust --config admin-password-secret=$SECRET_ID
+
+MariaDB provides the database, Redis provides caching, and the Gateway API
+components expose the application via an external HTTPS endpoint. MariaDB and
+Redis are mandatory dependencies for successful deployment of HRMS, while the
+Gateway API components are optional but recommended for production deployments.
 
 Grant the charm access to the secret:
 
@@ -173,7 +177,7 @@ The output should be similar to the following:
     App                       Version  Status  Scale  Charm                    Channel      Rev  Address      Exposed  Message
     gateway-api-integrator             active      1  gateway-api-integrator   1/stable     XX  10.152.0.13  no
     hrms                               active      1  hrms                     16/edge      XX  10.152.0.10  no
-    ingress-configurator               active      1  ingress-configurator     latest/edge  XX  10.152.0.14  no
+    ingress-configurator               active      1  ingress-configurator     latest/stable XX  10.152.0.14  no
     mariadb-k8s                        active      1  mariadb-k8s              latest/edge  XX  10.152.0.11  no
     redis-k8s                          active      1  redis-k8s                latest/edge  XX  10.152.0.12  no
     self-signed-certificates           active      1  self-signed-certificates 1/stable     XX  10.152.0.15  no
@@ -218,6 +222,11 @@ To view the website, add ``hrms.internal`` to ``/etc/hosts``:
 
     echo "$GATEWAY_IP hrms.internal" | sudo tee -a /etc/hosts
 
+.. note::
+
+    If you are using Multipass, add this entry to the host machine's
+    ``/etc/hosts`` file, not the VM's ``/etc/hosts`` file.
+
 Finally, open the ingress URL in your browser:
 
 .. code-block:: text
@@ -239,6 +248,13 @@ To remove the tutorial model, run:
 .. code-block:: bash
 
     juju destroy-model hrms-tutorial --destroy-storage
+
+After you finish the tutorial, remove the ``hrms.internal`` entry from
+``/etc/hosts`` if you added one.
+
+.. code-block:: bash
+
+    sudo sed -i '/hrms\.internal/d' /etc/hosts
 
 You can clean up your environment by following this guide:
 `Tear down your test environment <https://documentation.ubuntu.com/juju/3.6/howto/manage-your-juju-deployment/tear-down-your-juju-deployment-local-testing-and-development/>`_
