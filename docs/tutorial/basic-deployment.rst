@@ -171,24 +171,24 @@ The output should be similar to the following:
 
 .. code-block:: text
 
-    Model          Controller           Cloud/Region        Version  SLA          Timestamp
-    hrms-tutorial  tutorial-controller  <k8s-cloud>/localhost  3.x      unsupported  10:00:00Z
+    Model          Controller     Cloud/Region  Version  SLA          Timestamp
+    hrms-tutorial  concierge-k8s  k8s           3.6.25   unsupported  16:12:49Z
 
-    App                       Version  Status  Scale  Charm                    Channel      Rev  Address      Exposed  Message
-    gateway-api-integrator             active      1  gateway-api-integrator   1/stable     XX  10.152.0.13  no
-    hrms                               active      1  hrms                     16/edge      XX  10.152.0.10  no
-    ingress-configurator               active      1  ingress-configurator     latest/stable XX  10.152.0.14  no
-    mariadb-k8s                        active      1  mariadb-k8s              latest/edge  XX  10.152.0.11  no
-    redis-k8s                          active      1  redis-k8s                latest/edge  XX  10.152.0.12  no
-    self-signed-certificates           active      1  self-signed-certificates 1/stable     XX  10.152.0.15  no
+    App                       Version  Status  Scale  Charm                     Channel        Rev  Address         Exposed  Message
+    gateway-api-integrator             active      1  gateway-api-integrator    1/stable       165  10.152.183.112  no       Gateway addresses: 10.114.45.113
+    hrms                               active      1  hrms                      16/edge          3  10.152.183.163  no       
+    ingress-configurator               active      1  ingress-configurator      latest/stable   95  10.152.183.201  no       Ready
+    mariadb-k8s                        active      1  mariadb-k8s               latest/edge      8  10.152.183.24   no       Ready - serving 1 database(s)
+    redis-k8s                 7.2.5    active      1  redis-k8s                 latest/edge     42  10.152.183.227  no       
+    self-signed-certificates           active      1  self-signed-certificates  1/stable       586  10.152.183.101  no       
 
     Unit                         Workload  Agent  Address     Ports  Message
-    gateway-api-integrator/0     active    idle   10.1.0.13
-    hrms/0                       active    idle   10.1.0.10
-    ingress-configurator/0       active    idle   10.1.0.14
-    mariadb-k8s/0                active    idle   10.1.0.11
-    redis-k8s/0                  active    idle   10.1.0.12
-    self-signed-certificates/0   active    idle   10.1.0.15
+    gateway-api-integrator/0*    active    idle   10.1.0.117         Gateway addresses: 10.114.45.113
+    hrms/0*                      active    idle   10.1.0.170         
+    ingress-configurator/0*      active    idle   10.1.0.183         Ready
+    mariadb-k8s/0*               active    idle   10.1.0.44          Ready - serving 1 database(s)
+    redis-k8s/0*                 active    idle   10.1.0.96          
+    self-signed-certificates/0*  active    idle   10.1.0.91 
 
 
 Your revision numbers and IP addresses will differ, but the deployment is finished
