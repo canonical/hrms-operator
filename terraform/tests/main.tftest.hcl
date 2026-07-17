@@ -5,33 +5,30 @@ run "setup_tests" {
   module {
     source = "./tests/setup"
   }
-}
 
-run "basic_deploy" {
   variables {
-    model_uuid = run.setup_tests.model_uuid
-    channel    = "latest/edge"
-    # renovate: depName="netbox-k8s"
-    revision = 1
+    channel = "16/edge"
+    # renovate: depName="hrms"
+    revision = 3
+
+    database = {
+      # renovate: depName="mariadb-k8s"
+      revision = 8
+    }
+
+    redis = {
+      # renovate: depName="redis-k8s"
+      revision = 42
+    }
   }
 
   assert {
-    condition     = output.app_name == "netbox-k8s"
-    error_message = "netbox-k8s app_name did not match expected"
-  }
-}
-
-run "integration_test" {
-  variables {
-    model_uuid = run.setup_tests.model_uuid
-  }
-
-  module {
-    source = "./tests/integration_test"
+    condition     = output.application == "hrms"
+    error_message = "hrms application name did not match expected"
   }
 
   assert {
-    condition     = data.external.app_status.result.status == "blocked"
-    error_message = "netbox-k8s app_name did not match expected"
+    condition     = output.status == "active"
+    error_message = "hrms application status is not active"
   }
 }
