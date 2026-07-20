@@ -12,3 +12,7 @@ CERTIFICATES_APP = "self-signed-certificates"
 
 GATEWAY_CLASS = "cilium"
 EXTERNAL_HOSTNAME = "hrms.internal"
+
+PROMETHEUS_APP = "prometheus-k8s"
+LOKI_APP = "loki-k8s"
+GRAFANA_APP = "grafana-k8s"
