@@ -8,11 +8,22 @@ Juju events
 
 For this charm, the following Juju events are observed:
 
-.. TODO: Fill in the information.
-   Numbered list of Juju events. Link to describe the event in more detail
-   (either in Juju docs or in a specific charm's docs). 
-   When is the event fired? What does the event indicate/mean?
+Observability
+-------------
 
-   Add a note or seealso admonition with the information below.
-   If using the starter pack, replace the link with intersphinx.
-   See more in the Juju docs: `Hook <https://documentation.ubuntu.com/juju/latest/user/reference/hook/>`_
+The charm observes the relation events for its Canonical Observability Stack
+integrations. These events are handled by the COS charm library providers
+(``MetricsEndpointProvider``, ``GrafanaDashboardProvider``, and
+``LogForwarder``) rather than by the charm's ``_reconcile`` handler:
+
+* ``metrics-endpoint-relation-*``: Publishes the Prometheus scrape job and
+  alert rules when a Prometheus charm relates over ``metrics-endpoint``.
+* ``grafana-dashboard-relation-*``: Publishes the bundled Grafana dashboard
+  when a Grafana charm relates over ``grafana-dashboard``.
+* ``logging-relation-*``: Configures Pebble log forwarding to Loki and
+  publishes Loki alert rules when a Loki charm relates over ``logging``.
+
+.. seealso::
+
+   See more in the Juju docs:
+   `Hook <https://documentation.ubuntu.com/juju/latest/user/reference/hook/>`_

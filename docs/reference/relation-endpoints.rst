@@ -6,18 +6,20 @@
 Relation endpoints
 ==================
 
-.. TODO: Use the template below to add information about integrations supported by this charm.
+Observability
+-------------
 
-Integration example
--------------------
+* **metrics-endpoint** (provides, interface ``prometheus_scrape``): Exposes the
+  HRMS Prometheus scrape job and alert rules to Prometheus.
+* **logging** (requires, interface ``loki_push_api``): Forwards workload logs to
+  Loki using Pebble log forwarding, and publishes Loki alert rules.
+* **grafana-dashboard** (provides, interface ``grafana_dashboard``): Ships the
+  HRMS Grafana dashboard.
 
-* **Interface**:
-* **Supported charms**: 
-
-Description here.
-
-Example <integration-name> integrate command: 
+Example integrate commands:
 
 .. code-block:: bash
 
-   juju integrate __charm_name__ <supported-charm>:<integration-name>
+   juju integrate hrms:metrics-endpoint prometheus:metrics-endpoint
+   juju integrate hrms:logging loki:logging
+   juju integrate hrms:grafana-dashboard grafana:grafana-dashboard
