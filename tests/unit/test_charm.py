@@ -365,3 +365,51 @@ def test_active_when_site_exists():
     )
     out = ctx.run(ctx.on.pebble_ready(c), state)
     assert out.unit_status == ops.ActiveStatus()
+
+
+def test_metrics_endpoint_scrape_jobs_published():
+    ctx = Context(HRMSCharm, charm_root=".")
+    metrics = Relation("metrics-endpoint")
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=True)],
+        relations=[metrics],
+    )
+    out = ctx.run(ctx.on.relation_joined(metrics), state)
+    data = out.get_relation(metrics.id).local_app_data
+    assert "scrape_jobs" in data
+    assert "9102" in data["scrape_jobs"]
+
+
+def test_logging_relation_does_not_break_reconcile():
+    ctx = Context(HRMSCharm, charm_root=".")
+    c = make_container(site_exists=True)
+    secret = make_admin_secret()
+    logging_rel = Relation("logging", remote_app_name="loki-k8s")
+    state = State(
+        containers=[c],
+        relations=[
+            make_database_relation(),
+            make_redis_relation(),
+            PeerRelation("hrms-peers"),
+            logging_rel,
+        ],
+        secrets=[secret],
+        config={"admin-password-secret": secret.id},
+        leader=True,
+    )
+    out = ctx.run(ctx.on.pebble_ready(c), state)
+    assert out.unit_status == ops.ActiveStatus()
+
+
+def test_grafana_dashboard_relation_joins_without_error():
+    ctx = Context(HRMSCharm, charm_root=".")
+    grafana = Relation("grafana-dashboard")
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=True)],
+        relations=[grafana],
+    )
+    out = ctx.run(ctx.on.relation_joined(grafana), state)
+    # The relation joins cleanly; the dashboards payload is populated in a later change.
+    assert out.get_relation(grafana.id) is not None
