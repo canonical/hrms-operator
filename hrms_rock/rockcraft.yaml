@@ -94,3 +94,21 @@ parts:
     source: templates/
     organize:
       nginx-frappe.conf: etc/nginx/conf.d/frappe.conf
+      statsd-mapping.conf: etc/statsd-mapping.conf
+
+  statsd-exporter:
+    plugin: nil
+    build-packages:
+      - curl
+      - ca-certificates
+    override-build: |
+      STATSD_EXPORTER_VERSION=0.28.0
+      ARCH=amd64
+      cd "${CRAFT_PART_BUILD}"
+      curl -sSL -O "https://github.com/prometheus/statsd_exporter/releases/download/v${STATSD_EXPORTER_VERSION}/statsd_exporter-${STATSD_EXPORTER_VERSION}.linux-${ARCH}.tar.gz"
+      curl -sSL -O "https://github.com/prometheus/statsd_exporter/releases/download/v${STATSD_EXPORTER_VERSION}/sha256sums.txt"
+      grep "statsd_exporter-${STATSD_EXPORTER_VERSION}.linux-${ARCH}.tar.gz" sha256sums.txt | sha256sum -c -
+      tar -xzf "statsd_exporter-${STATSD_EXPORTER_VERSION}.linux-${ARCH}.tar.gz"
+      install -D -m 0755 \
+        "statsd_exporter-${STATSD_EXPORTER_VERSION}.linux-${ARCH}/statsd_exporter" \
+        "${CRAFT_PART_INSTALL}/bin/statsd_exporter"
