@@ -1,0 +1,79 @@
+{
+  "title": "Frappe HRMS Operator",
+  "uid": "frappe-hrms-overview",
+  "schemaVersion": 39,
+  "editable": true,
+  "tags": ["frappe-hrms"],
+  "time": { "from": "now-1h", "to": "now" },
+  "timezone": "",
+  "templating": {
+    "list": [
+      {
+        "name": "prometheusds",
+        "type": "datasource",
+        "query": "prometheus",
+        "label": "Prometheus data source",
+        "hide": 0
+      },
+      {
+        "name": "lokids",
+        "type": "datasource",
+        "query": "loki",
+        "label": "Loki data source",
+        "hide": 0
+      },
+      {
+        "name": "juju_application",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+        "query": "label_values(up, juju_application)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "HTTP request rate",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(gunicorn_requests_total{juju_application=~\"$juju_application\"}[5m]))",
+          "legendFormat": "requests/s"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "HTTP responses by status",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (rate(gunicorn_request_status_total{juju_application=~\"$juju_application\"}[5m]))",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Application logs",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "${lokids}" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{juju_application=~\"$juju_application\"}"
+        }
+      ]
+    }
+  ]
+}
