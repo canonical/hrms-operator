@@ -22,6 +22,11 @@ BENCH_BIN = f"{BENCH_DIR}/env/bin/bench"
 GUNICORN_BIN = f"{BENCH_DIR}/env/bin/gunicorn"
 NODE_BIN = "/bin/node"
 SOCKETIO_JS = f"{BENCH_DIR}/apps/frappe/socketio.js"
+STATSD_EXPORTER_BIN = "/bin/statsd_exporter"
+STATSD_MAPPING_CONFIG = "/etc/statsd-mapping.conf"
+STATSD_HOST = "localhost:9125"
+STATSD_PREFIX = "frappe_hrms"
+METRICS_PORT = 9102
 
 REQUIRED_FRAPPE_APPS = {"erpnext", "hrms"}
 
@@ -32,6 +37,7 @@ SERVICES = [
     "queue-short",
     "queue-long",
     "scheduler",
+    "statsd-exporter",
 ]
 
 CHECKS = [
@@ -462,6 +468,8 @@ class FrappeWorkload:
                         " --worker-class=gthread"
                         " --worker-tmp-dir=/dev/shm"
                         " --timeout=120"
+                        f" --statsd-host={STATSD_HOST}"
+                        f" --statsd-prefix={STATSD_PREFIX}"
                         " --preload"
                         " frappe.app:application"
                     ),
@@ -469,6 +477,7 @@ class FrappeWorkload:
                     "user": "frappe",
                     "working-dir": BENCH_DIR,
                     "environment": bench_env,
+                    "after": ["statsd-exporter"],
                     "on-check-failure": {"backend-up": "restart"},
                 },
                 "websocket": {
@@ -514,6 +523,20 @@ class FrappeWorkload:
                     "user": "frappe",
                     "working-dir": BENCH_DIR,
                     "environment": bench_env,
+                },
+                "statsd-exporter": {
+                    "override": "replace",
+                    "summary": "Prometheus statsd exporter",
+                    "command": (
+                        f"{STATSD_EXPORTER_BIN}"
+                        f" --statsd.mapping-config={STATSD_MAPPING_CONFIG}"
+                        f" --statsd.listen-udp={STATSD_HOST}"
+                        f" --statsd.listen-tcp={STATSD_HOST}"
+                        f" --web.listen-address=:{METRICS_PORT}"
+                    ),
+                    "startup": "disabled",
+                    "user": "frappe",
+                    "working-dir": BENCH_DIR,
                 },
             },
             "checks": {

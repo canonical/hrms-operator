@@ -26,6 +26,27 @@ def test_truncate_output_tail():
     assert FrappeWorkload._truncate_output_tail("a" * 20, max_chars=5) == "aaaaa"
 
 
+def test_pebble_layer_includes_statsd_exporter():
+    workload = FrappeWorkload(Mock())
+    layer = workload._build_pebble_layer()
+
+    assert "statsd-exporter" in layer["services"]
+    statsd = layer["services"]["statsd-exporter"]
+    assert "/bin/statsd_exporter" in statsd["command"]
+    assert "--statsd.listen-udp=localhost:9125" in statsd["command"]
+    assert "--web.listen-address=:9102" in statsd["command"]
+
+    backend_command = layer["services"]["backend"]["command"]
+    assert "--statsd-host=localhost:9125" in backend_command
+    assert "--statsd-prefix=frappe_hrms" in backend_command
+
+
+def test_statsd_exporter_is_a_reconciled_service():
+    from workload import SERVICES
+
+    assert "statsd-exporter" in SERVICES
+
+
 def test_services_healthy_false_when_not_started():
     ctx = Context(HRMSCharm, charm_root=".")
     c = make_container(site_exists=True)
