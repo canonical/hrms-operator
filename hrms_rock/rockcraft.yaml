@@ -61,8 +61,8 @@ parts:
       groupadd -R "${CRAFT_OVERLAY}" -g 1000 frappe
       useradd -R "${CRAFT_OVERLAY}" -M -u 1000 -g frappe -d /home/frappe -s /bin/bash frappe
     override-build: |
-      groupadd -g 1000 frappe
-      useradd -u 1000 -g 1000 -m -d /home/frappe -s /bin/bash frappe
+      getent group frappe >/dev/null || groupadd -g 1000 frappe
+      id -u frappe >/dev/null 2>&1 || useradd -u 1000 -g 1000 -m -d /home/frappe -s /bin/bash frappe
 
       runuser -s /bin/bash frappe <<EOF
       set -ex
