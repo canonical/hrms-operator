@@ -15,7 +15,7 @@ changes:
     Frappe/ERPNext/HRMS version.
   urls:
     pr:
-      - "https://github.com/canonical/hrms-operator/pull/TBD"
+      - "https://github.com/canonical/hrms-operator/pull/18"
     related_issue:
   visibility: public
   highlight: true
