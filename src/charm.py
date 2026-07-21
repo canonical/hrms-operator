@@ -59,6 +59,8 @@ class HRMSCharm(ops.CharmBase):
             strip_prefix=True,
         )
 
+        self.framework.observe(self.on.upgrade_charm, self._on_upgrade)
+
         for event in [
             self.on[CONTAINER_NAME].pebble_ready,
             self.on[CONTAINER_NAME].pebble_check_failed,
@@ -107,6 +109,18 @@ class HRMSCharm(ops.CharmBase):
             self.unit.status = ops.ActiveStatus()
         else:
             self.unit.status = ops.WaitingStatus("Waiting for services to become healthy")
+
+    def _on_upgrade(self, event: ops.UpgradeCharmEvent) -> None:
+        """Handle upgrade-charm event by running database migrations."""
+        container = self.unit.get_container(CONTAINER_NAME)
+        workload = FrappeWorkload(container)
+
+        self.unit.status = ops.MaintenanceStatus("Running database migrations")
+        workload.setup_assets()
+        workload.stop_services()
+        workload.run_migrate()
+
+        self._reconcile(event)
 
 
 if __name__ == "__main__":  # pragma: nocover

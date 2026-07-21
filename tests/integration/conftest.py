@@ -8,6 +8,9 @@ import pytest
 
 from integration.constants import (
     CERTIFICATES_APP,
+    CHARM_NAME,
+    CHARMHUB_CHANNEL,
+    DEPLOY_TIMEOUT,
     EXTERNAL_HOSTNAME,
     FRAPPE_APP,
     GATEWAY_APP,
@@ -17,8 +20,6 @@ from integration.constants import (
     REDIS_APP,
 )
 from integration.helpers import all_settled
-
-DEPLOY_TIMEOUT = 10 * 60
 
 
 @pytest.fixture(scope="module", name="admin_password_secret")
@@ -101,6 +102,37 @@ def frappe_hrms_fixture(
 
     juju.integrate(f"{FRAPPE_APP}:database", f"{mariadb}:database")
     juju.integrate(f"{FRAPPE_APP}:redis", f"{redis}:redis")
+    juju.integrate(f"{FRAPPE_APP}:ingress", f"{ingress_configurator}:ingress")
+
+    juju.wait(all_settled, timeout=DEPLOY_TIMEOUT)
+    return FRAPPE_APP
+
+
+@pytest.fixture(scope="module", name="charmhub_hrms")
+def charmhub_hrms_fixture(
+    juju: jubilant.Juju,
+    admin_password_secret: str,
+    ingress_configurator: str,
+) -> str:
+    """Deploy the latest revision of hrms from Charmhub and its dependencies.
+
+    This deploys the charm from the published channel so that we can later
+    refresh (upgrade) to the locally-packed charm.
+    """
+    juju.deploy(MARIADB_APP, channel="latest/edge", trust=True)
+    juju.deploy(REDIS_APP, channel="latest/edge", trust=True)
+
+    juju.deploy(
+        CHARM_NAME,
+        app=FRAPPE_APP,
+        channel=CHARMHUB_CHANNEL,
+        config={"admin-password-secret": admin_password_secret},
+        trust=True,
+    )
+    juju.grant_secret(admin_password_secret, FRAPPE_APP)
+
+    juju.integrate(f"{FRAPPE_APP}:database", f"{MARIADB_APP}:database")
+    juju.integrate(f"{FRAPPE_APP}:redis", f"{REDIS_APP}:redis")
     juju.integrate(f"{FRAPPE_APP}:ingress", f"{ingress_configurator}:ingress")
 
     juju.wait(all_settled, timeout=DEPLOY_TIMEOUT)

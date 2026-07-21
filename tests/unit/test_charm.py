@@ -12,8 +12,10 @@ from scenario.errors import UncaughtCharmError
 from charm import HRMSCharm
 from unit.conftest import (
     BENCH,
+    CHECK_LAYER,
     CONTAINER,
     make_admin_secret,
+    make_check_infos,
     make_container,
     make_database_relation,
     make_execs,
@@ -365,3 +367,72 @@ def test_active_when_site_exists():
     )
     out = ctx.run(ctx.on.pebble_ready(c), state)
     assert out.unit_status == ops.ActiveStatus()
+
+
+def test_upgrade_runs_migrate():
+    """upgrade-charm event should run bench migrate and reach active status."""
+    ctx = Context(HRMSCharm, charm_root=".")
+    c = make_container(site_exists=True)
+    secret = make_admin_secret()
+    state = State(
+        containers=[c],
+        relations=[
+            make_database_relation(),
+            make_redis_relation(),
+            PeerRelation("hrms-peers"),
+        ],
+        secrets=[secret],
+        config={"admin-password-secret": secret.id},
+        leader=True,
+    )
+    out = ctx.run(ctx.on.upgrade_charm(), state)
+    assert out.unit_status == ops.ActiveStatus()
+    migrate_commands = [
+        args.command for args in ctx.exec_history[CONTAINER] if "migrate" in args.command
+    ]
+    assert [
+        f"{BENCH}/env/bin/bench",
+        "--site",
+        "frappe-hrms",
+        "migrate",
+    ] in migrate_commands
+
+
+def test_upgrade_errors_on_migrate_failure():
+    """upgrade-charm raises (error state) if bench migrate fails."""
+    ctx = Context(HRMSCharm, charm_root=".")
+    c = Container(
+        CONTAINER,
+        can_connect=True,
+        execs=frozenset(
+            {
+                Exec(["chown"], return_code=0),
+                Exec(
+                    [f"{BENCH}/env/bin/bench", "--site", "frappe-hrms", "list-apps"],
+                    return_code=0,
+                    stdout="frappe\nerpnext\nhrms\n",
+                ),
+                Exec(
+                    [f"{BENCH}/env/bin/bench", "--site", "frappe-hrms", "migrate"],
+                    return_code=1,
+                ),
+            }
+        ),
+        layers={"checks": CHECK_LAYER},
+        check_infos=make_check_infos(),
+    )
+    secret = make_admin_secret()
+    state = State(
+        containers=[c],
+        relations=[
+            make_database_relation(),
+            make_redis_relation(),
+            PeerRelation("hrms-peers"),
+        ],
+        secrets=[secret],
+        config={"admin-password-secret": secret.id},
+        leader=True,
+    )
+    with pytest.raises(UncaughtCharmError) as exc_info:
+        ctx.run(ctx.on.upgrade_charm(), state)
+    assert isinstance(exc_info.value.__cause__, WorkloadError)

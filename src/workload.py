@@ -314,6 +314,48 @@ class FrappeWorkload:
         )
         return apps
 
+    def run_migrate(self) -> None:
+        """Run bench migrate to apply database schema changes and patches.
+
+        This is idempotent: if the database is already up-to-date with the
+        app source on disk, the command completes quickly with no changes.
+
+        Raises:
+            WorkloadError: If bench migrate fails.
+        """
+        logger.info("Running bench migrate for site %r", SITE_NAME)
+        try:
+            _, stderr = self._container.exec(
+                [BENCH_BIN, "--site", SITE_NAME, "migrate"],
+                working_dir=BENCH_DIR,
+                user="frappe",
+                timeout=600,
+            ).wait_output()
+            if stderr:
+                logger.info("bench migrate stderr: %s", self._truncate_output_tail(stderr))
+        except ops.pebble.ExecError as exc:
+            logger.error(
+                "bench migrate failed - stdout: %s, stderr: %s",
+                self._truncate_output_tail(exc.stdout),
+                self._truncate_output_tail(exc.stderr),
+            )
+            raise WorkloadError("Failed to run bench migrate") from exc
+
+    def stop_services(self) -> None:
+        """Stop all workload services.
+
+        Raises:
+            WorkloadError: If stopping services fails.
+        """
+        try:
+            services_info = self._container.get_services()
+            for service_name in SERVICES:
+                info = services_info.get(service_name)
+                if info is not None and info.is_running():
+                    self._container.stop(service_name)
+        except ops.pebble.Error as exc:
+            raise WorkloadError("Failed to stop services") from exc
+
     def reconcile_services(self, *, restart: bool = False) -> None:
         """Ensure all workload services are running with the current layer.
 
