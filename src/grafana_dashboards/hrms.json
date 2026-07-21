@@ -1,79 +1,332 @@
 {
-  "title": "Frappe HRMS Operator",
-  "uid": "frappe-hrms-overview",
-  "schemaVersion": 39,
-  "editable": true,
-  "tags": ["frappe-hrms"],
-  "time": { "from": "now-1h", "to": "now" },
-  "timezone": "",
-  "templating": {
+  "annotations": {
     "list": [
       {
-        "name": "prometheusds",
-        "type": "datasource",
-        "query": "prometheus",
-        "label": "Prometheus data source",
-        "hide": 0
-      },
-      {
-        "name": "lokids",
-        "type": "datasource",
-        "query": "loki",
-        "label": "Loki data source",
-        "hide": 0
-      },
-      {
-        "name": "juju_application",
-        "type": "query",
-        "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
-        "query": "label_values(up, juju_application)",
-        "refresh": 2,
-        "multi": true,
-        "includeAll": true
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "target": { "limit": 100, "matchAny": false, "tags": [], "type": "dashboard" },
+        "type": "dashboard"
       }
     ]
   },
+  "description": "Dashboard for the Frappe HRMS charm, powered by Juju. Adapted from the Canonical paas-charm Flask Operator dashboard for gunicorn/statsd metrics.",
+  "editable": true,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
   "panels": [
     {
-      "id": 1,
-      "title": "HTTP request rate",
-      "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "decimals": 0, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 5, "x": 0, "y": 0 },
+      "id": 9,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
       "targets": [
         {
-          "refId": "A",
-          "expr": "sum(rate(gunicorn_requests_total{juju_application=~\"$juju_application\"}[5m]))",
-          "legendFormat": "requests/s"
+          "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+          "expr": "increase(gunicorn_requests_total{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"}[24h])",
+          "legendFormat": "",
+          "refId": "A"
         }
-      ]
+      ],
+      "timeFrom": "24h",
+      "title": "Request Count",
+      "type": "stat"
     },
     {
+      "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+      "fieldConfig": { "defaults": { "decimals": 0, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 7, "x": 5, "y": 0 },
+      "id": 11,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+          "expr": "increase(gunicorn_request_status_total{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"}[24h])",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "24h",
+      "title": "Status Code Count",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 0, "lineWidth": 1, "showPoints": "auto", "spanNulls": false }, "unit": "reqps" },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
+      "id": 7,
+      "options": {
+        "legend": { "calcs": [], "displayMode": "hidden", "placement": "bottom" },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+          "expr": "rate(gunicorn_requests_total{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"}[3m])",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "Request Per Sec",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 0, "lineWidth": 1, "thresholdsStyle": { "mode": "area" } }, "max": 1, "min": 0, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 0.8 } ] }, "unit": "percentunit" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 6 },
       "id": 2,
-      "title": "HTTP responses by status",
-      "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "options": { "legend": { "calcs": [], "displayMode": "hidden", "placement": "bottom" }, "tooltip": { "mode": "single", "sort": "none" } },
       "targets": [
         {
-          "refId": "A",
-          "expr": "sum by (status) (rate(gunicorn_request_status_total{juju_application=~\"$juju_application\"}[5m]))",
-          "legendFormat": "{{status}}"
+          "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+          "expr": "sum(gunicorn_request_status_total{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\", status=~\"2.*\"}) / sum(gunicorn_request_status_total{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"})",
+          "legendFormat": "2XX Rate",
+          "refId": "A"
         }
-      ]
+      ],
+      "title": "2XX Rate",
+      "type": "timeseries"
     },
     {
+      "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 0, "lineWidth": 1 }, "max": 1, "min": 0, "unit": "percentunit" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 6 },
       "id": 3,
-      "title": "Application logs",
-      "type": "logs",
-      "datasource": { "type": "loki", "uid": "${lokids}" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 8 },
+      "options": { "legend": { "calcs": [], "displayMode": "hidden", "placement": "bottom" }, "tooltip": { "mode": "single", "sort": "none" } },
       "targets": [
         {
-          "refId": "A",
-          "expr": "{juju_application=~\"$juju_application\"}"
+          "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+          "expr": "sum(gunicorn_request_status_total{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\", status=~\"3.*\"}) / sum(gunicorn_request_status_total{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"})",
+          "legendFormat": "3XX Rate",
+          "refId": "A"
         }
-      ]
+      ],
+      "title": "3XX Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 0, "lineWidth": 1 }, "max": 1, "min": 0, "unit": "percentunit" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 6 },
+      "id": 4,
+      "options": { "legend": { "calcs": [], "displayMode": "hidden", "placement": "bottom" }, "tooltip": { "mode": "single", "sort": "none" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+          "expr": "sum(gunicorn_request_status_total{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\", status=~\"4.*\"}) / sum(gunicorn_request_status_total{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"})",
+          "legendFormat": "4XX Rate",
+          "refId": "A"
+        }
+      ],
+      "title": "4XX Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 0, "lineWidth": 1, "thresholdsStyle": { "mode": "area" } }, "max": 1, "min": 0, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 0.1 } ] }, "unit": "percentunit" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 6 },
+      "id": 5,
+      "options": { "legend": { "calcs": [], "displayMode": "hidden", "placement": "bottom" }, "tooltip": { "mode": "single", "sort": "none" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+          "expr": "sum(gunicorn_request_status_total{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\", status=~\"5.*\"}) / sum(gunicorn_request_status_total{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"})",
+          "legendFormat": "5XX Rate",
+          "refId": "A"
+        }
+      ],
+      "title": "5XX Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 0, "lineWidth": 1 }, "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "id": 13,
+      "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single", "sort": "none" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+          "expr": "gunicorn_request_duration_seconds_sum{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"} / gunicorn_request_duration_seconds_count{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"}",
+          "legendFormat": "{{juju_unit}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Request Average Duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 0, "lineWidth": 1 }, "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "id": 15,
+      "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single", "sort": "none" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+          "expr": "gunicorn_request_duration_seconds{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\", quantile=\"0.5\"}",
+          "legendFormat": "PR 50",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+          "expr": "gunicorn_request_duration_seconds{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\", quantile=\"0.9\"}",
+          "legendFormat": "PR 90",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+          "expr": "gunicorn_request_duration_seconds{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\", quantile=\"0.99\"}",
+          "legendFormat": "PR 99",
+          "refId": "C"
+        }
+      ],
+      "title": "Request Duration Percentile",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+      "fieldConfig": { "defaults": { "decimals": 0, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 20 },
+      "id": 19,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
+          "expr": "gunicorn_workers{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"}",
+          "legendFormat": "{{juju_unit}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Gunicorn Workers",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${lokids}" },
+      "description": "Pick a unit to display logs.",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 26 },
+      "id": 17,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": false,
+        "sortOrder": "Descending",
+        "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${lokids}" },
+          "editorMode": "builder",
+          "expr": "{juju_application=~\"$juju_application\",juju_application!=``,juju_model=~\"$juju_model\",juju_model!=``,juju_model_uuid=~\"$juju_model_uuid\",juju_model_uuid!=``,juju_unit=~\"$juju_unit\",juju_unit!=``} |= ``",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Application Logs",
+      "type": "logs"
     }
-  ]
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["frappe-hrms"],
+  "templating": {
+    "list": [
+      {
+        "allValue": ".*",
+        "datasource": { "uid": "${prometheusds}" },
+        "definition": "label_values(up{juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_application=~\"$juju_application\"},juju_unit)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Juju unit",
+        "multi": true,
+        "name": "juju_unit",
+        "query": { "query": "label_values(up{juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_application=~\"$juju_application\"},juju_unit)", "refId": "StandardVariableQuery" },
+        "refresh": 1,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "datasource": { "uid": "${prometheusds}" },
+        "definition": "label_values(up{juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\"},juju_application)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Juju application",
+        "multi": true,
+        "name": "juju_application",
+        "query": { "query": "label_values(up{juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\"},juju_application)", "refId": "StandardVariableQuery" },
+        "refresh": 1,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "datasource": { "uid": "${prometheusds}" },
+        "definition": "label_values(up{juju_model=~\"$juju_model\"},juju_model_uuid)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Juju model uuid",
+        "multi": true,
+        "name": "juju_model_uuid",
+        "query": { "query": "label_values(up{juju_model=~\"$juju_model\"},juju_model_uuid)", "refId": "StandardVariableQuery" },
+        "refresh": 1,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "datasource": { "uid": "${prometheusds}" },
+        "definition": "label_values(up{juju_charm=\"hrms\"},juju_model)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Juju model",
+        "multi": true,
+        "name": "juju_model",
+        "query": { "query": "label_values(up{juju_charm=\"hrms\"},juju_model)", "refId": "StandardVariableQuery" },
+        "refresh": 1,
+        "sort": 0,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Frappe HRMS Operator",
+  "uid": "frappe-hrms-overview",
+  "version": 1,
+  "weekStart": ""
 }
