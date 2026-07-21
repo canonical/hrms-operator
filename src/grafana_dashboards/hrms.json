@@ -207,33 +207,9 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
-      "fieldConfig": { "defaults": { "decimals": 0, "unit": "short" }, "overrides": [] },
-      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 20 },
-      "id": 19,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${prometheusds}" },
-          "expr": "gunicorn_workers{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"}",
-          "legendFormat": "{{juju_unit}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Gunicorn Workers",
-      "type": "stat"
-    },
-    {
       "datasource": { "type": "loki", "uid": "${lokids}" },
       "description": "Pick a unit to display logs.",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 26 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
       "id": 17,
       "options": {
         "dedupStrategy": "none",
