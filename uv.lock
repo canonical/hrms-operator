@@ -321,7 +321,7 @@ unit = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cosl" },
+    { name = "cosl", specifier = ">=1.10.2" },
     { name = "ops", specifier = "==3.8.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
 ]
