@@ -1,0 +1,21 @@
+# Copyright 2026 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+version_schema: 2
+
+changes:
+- title: Added Canonical Observability Stack (COS) integration
+  author: f-atwi
+  type: minor
+  description: |
+    Added observability support for the Frappe HRMS charm.
+    The charm now exports Prometheus metrics from gunicorn via a statsd exporter,
+    forwards workloadlogs to Loki using Pebble log forwarding,
+    and ships a Grafana dashboard together with Prometheus and Loki alert rules.
+    These are consumed over thenew ``metrics-endpoint``, ``logging``,
+    and ``grafana-dashboard`` relations.
+  urls:
+    pr:
+      - "https://github.com/canonical/hrms-operator/pull/19"
+  visibility: public
+  highlight: false
