@@ -1,5 +1,5 @@
 .. meta::
-   :description: Reference documentation for all Juju events observed by the __charm_name__ charm.
+   :description: Reference documentation for all Juju events observed by the HRMS charm.
 
 .. _reference_juju_events:
 
@@ -26,4 +26,4 @@ integrations. These events are handled by the COS charm library providers
 .. seealso::
 
    See more in the Juju docs:
-   `Hook <https://documentation.ubuntu.com/juju/latest/user/reference/hook/>`_
+   `Hook <https://canonical.com/juju/docs/juju-cli/latest/reference/hook/>`_

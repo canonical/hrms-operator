@@ -1,5 +1,5 @@
 .. meta::
-   :description: Reference documentation for all relation endpoints supported by the __charm_name__ charm.
+   :description: Reference documentation for all relation endpoints supported by the HRMS charm.
 
 .. _reference_relation_endpoints:
 
