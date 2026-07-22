@@ -72,6 +72,7 @@ class HRMSCharm(ops.CharmBase):
             jobs=[{"static_configs": [{"targets": [f"*:{METRICS_PORT}"]}]}],
             refresh_event=[
                 self.on.config_changed,
+                self.on.upgrade_charm,
                 self.on[CONTAINER_NAME].pebble_ready,
             ],
         )

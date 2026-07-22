@@ -103,7 +103,7 @@ parts:
       - ca-certificates
     override-build: |
       STATSD_EXPORTER_VERSION=0.28.0
-      ARCH=amd64
+      ARCH="${CRAFT_ARCH_BUILD_FOR}"
       cd "${CRAFT_PART_BUILD}"
       curl -sSL -O "https://github.com/prometheus/statsd_exporter/releases/download/v${STATSD_EXPORTER_VERSION}/statsd_exporter-${STATSD_EXPORTER_VERSION}.linux-${ARCH}.tar.gz"
       curl -sSL -O "https://github.com/prometheus/statsd_exporter/releases/download/v${STATSD_EXPORTER_VERSION}/sha256sums.txt"

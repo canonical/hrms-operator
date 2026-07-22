@@ -6,9 +6,9 @@
 How to integrate with COS
 =========================
 
-The HRMS charm integrates with the `Canonical Observability Stack
-https://documentation.ubuntu.com/observability/track-3.0/`_ (COS) to export
-metrics, forward logs, and provide Grafana dashboards.
+The HRMS charm integrates with the
+`Canonical Observability Stack <https://documentation.ubuntu.com/observability/track-3.0/>`_
+(COS) to export metrics, forward logs, and provide Grafana dashboards.
 
 Prerequisites
 -------------

@@ -31,13 +31,13 @@ METRICS_PORT = 9102
 REQUIRED_FRAPPE_APPS = {"erpnext", "hrms"}
 
 SERVICES = [
+    "statsd-exporter",
     "backend",
     "websocket",
     "frontend",
     "queue-short",
     "queue-long",
     "scheduler",
-    "statsd-exporter",
 ]
 
 CHECKS = [
