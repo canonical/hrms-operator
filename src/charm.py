@@ -33,6 +33,9 @@ DATABASE_RELATION = "database"
 REDIS_RELATION = "redis"
 INGRESS_RELATION = "ingress"
 PEER_RELATION = "hrms-peers"
+METRICS_RELATION = "metrics-endpoint"
+GRAFANA_DASHBOARD_RELATION = "grafana-dashboard"
+LOGGING_RELATION = "logging"
 HTTP_PORT = 8080
 METRICS_PORT = 9102
 
@@ -65,7 +68,7 @@ class HRMSCharm(ops.CharmBase):
 
         self._metrics_endpoint = MetricsEndpointProvider(
             self,
-            relation_name="metrics-endpoint",
+            relation_name=METRICS_RELATION,
             jobs=[{"static_configs": [{"targets": [f"*:{METRICS_PORT}"]}]}],
             refresh_event=[
                 self.on.config_changed,
@@ -74,9 +77,9 @@ class HRMSCharm(ops.CharmBase):
         )
         self._grafana_dashboards = GrafanaDashboardProvider(
             self,
-            relation_name="grafana-dashboard",
+            relation_name=GRAFANA_DASHBOARD_RELATION,
         )
-        self._logging = LogForwarder(self, relation_name="logging")
+        self._logging = LogForwarder(self, relation_name=LOGGING_RELATION)
 
         for event in [
             self.on[CONTAINER_NAME].pebble_ready,
