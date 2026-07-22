@@ -111,12 +111,21 @@ class HRMSCharm(ops.CharmBase):
             self.unit.status = ops.WaitingStatus("Waiting for services to become healthy")
 
     def _on_upgrade(self, event: ops.UpgradeCharmEvent) -> None:
-        """Handle upgrade-charm event by running database migrations."""
+        """Handle upgrade-charm event by running database migrations.
+
+        After a pod restart the non-persistent ``common_site_config.json`` is
+        lost, so we must re-write it before running ``bench migrate`` (which
+        requires Redis connectivity).
+        """
         container = self.unit.get_container(CONTAINER_NAME)
         workload = FrappeWorkload(container)
 
         self.unit.status = ops.MaintenanceStatus("Running database migrations")
         workload.setup_assets()
+
+        state = CharmState.from_charm(self, self._database, self._redis)
+        workload.configure(state)
+
         workload.stop_services()
         workload.run_migrate()
 
