@@ -33,4 +33,6 @@ header:
   - 'hrms_rock/templates/**'
   - 'src/loki_alert_rules/*.rule'
   - 'src/prometheus_alert_rules/*.rule'
+  - 'src/loki_alert_rules/*.rules'
+  - 'src/prometheus_alert_rules/*.rules'
   comment: on-failure
