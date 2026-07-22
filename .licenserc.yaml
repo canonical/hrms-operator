@@ -31,4 +31,6 @@ header:
   - 'uv.lock'
   - 'lib/**'
   - 'hrms_rock/templates/**'
+  - 'src/loki_alert_rules/*.rule'
+  - 'src/prometheus_alert_rules/*.rule'
   comment: on-failure
