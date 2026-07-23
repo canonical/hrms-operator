@@ -100,7 +100,6 @@ parts:
     plugin: nil
     build-packages:
       - curl
-      - ca-certificates
     override-build: |
       STATSD_EXPORTER_VERSION=0.28.0
       ARCH="${CRAFT_ARCH_BUILD_FOR}"
