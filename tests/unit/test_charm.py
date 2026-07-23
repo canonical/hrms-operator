@@ -3,8 +3,6 @@
 
 """Unit tests for the Frappe HRMS charm."""
 
-import json
-
 import ops
 import pytest
 from pydantic import ValidationError
@@ -407,27 +405,10 @@ def test_prometheus_alert_rules_published():
     out = ctx.run(ctx.on.relation_joined(metrics), state)
     data = out.get_relation(metrics.id).local_app_data
     assert "alert_rules" in data
-    assert "HRMSMetricsExporterDown" in data["alert_rules"]
-
-
-def test_loki_alert_rules_published():
-    ctx = Context(HRMSCharm, charm_root=".")
-    logging_rel = Relation(
-        "logging",
-        remote_app_name="loki-k8s",
-        remote_units_data={
-            0: {"endpoint": json.dumps({"url": "http://loki-0.loki:3100/loki/api/v1/push"})}
-        },
-    )
-    state = State(
-        leader=True,
-        containers=[Container(CONTAINER, can_connect=True)],
-        relations=[logging_rel],
-    )
-    out = ctx.run(ctx.on.relation_changed(logging_rel), state)
-    data = out.get_relation(logging_rel.id).local_app_data
-    assert "alert_rules" in data
-    assert "HRMSHighErrorLogRate" in data["alert_rules"]
+    # Built-in host-health alert injected by MetricsEndpointProvider.
+    assert "HostDown" in data["alert_rules"]
+    # Bundled application alert.
+    assert "HRMSHighServerErrorRatio" in data["alert_rules"]
 
 
 def test_grafana_dashboard_payload_is_non_empty():

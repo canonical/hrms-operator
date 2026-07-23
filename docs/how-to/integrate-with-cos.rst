@@ -59,5 +59,6 @@ Result
 
 After the relations settle, HRMS metrics are scraped by Prometheus, workload
 logs are forwarded to Loki via Pebble log forwarding, and the
-"Frappe HRMS Operator" dashboard appears in Grafana. Bundled Prometheus and
-Loki alert rules are published automatically over the same relations.
+"Frappe HRMS Operator" dashboard appears in Grafana. A bundled Prometheus alert
+rule is published over the ``metrics-endpoint`` relation, in addition to the
+built-in host-health alerts.

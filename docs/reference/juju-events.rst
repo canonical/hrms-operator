@@ -20,8 +20,8 @@ integrations. These events are handled by the COS charm library providers
   alert rules when a Prometheus charm relates over ``metrics-endpoint``.
 * ``grafana-dashboard-relation-*``: Publishes the bundled Grafana dashboard
   when a Grafana charm relates over ``grafana-dashboard``.
-* ``logging-relation-*``: Configures Pebble log forwarding to Loki and
-  publishes Loki alert rules when a Loki charm relates over ``logging``.
+* ``logging-relation-*``: Configures Pebble log forwarding to Loki when a Loki
+  charm relates over ``logging``.
 
 .. seealso::
 

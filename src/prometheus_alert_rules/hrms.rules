@@ -1,23 +1,21 @@
 groups:
   - name: frappe_hrms
     rules:
-      - alert: HRMSMetricsExporterDown
-        expr: up == 0
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "HRMS metrics exporter is down"
-          description: >-
-            The Prometheus scrape target for {{ $labels.juju_application }}/{{ $labels.juju_unit }}
-            has been unreachable for more than 5 minutes.
-      - alert: HRMSHighServerErrorRate
-        expr: sum(rate(gunicorn_request_status_total{status=~"5.."}[5m])) > 1
-        for: 10m
+      - alert: HRMSHighServerErrorRatio
+        expr: |
+          sum(rate(gunicorn_request_status_total{status=~"5.."}[5m]))
+            /
+          sum(rate(gunicorn_request_status_total[5m]))
+            > 0.05
+          and
+          sum(rate(gunicorn_request_status_total[5m])) > 1
+        for: 15m
         labels:
           severity: warning
         annotations:
-          summary: "Elevated 5xx response rate in HRMS"
+          summary: "Elevated HRMS 5xx error ratio"
           description: >-
-            HRMS is returning more than one HTTP 5xx response per second averaged
-            over the last 5 minutes.
+            More than 5% of HRMS HTTP responses were 5xx over the last 5 minutes
+            (sustained for 15 minutes) while serving more than 1 request per
+            second. Service-down conditions are covered separately by the
+            built-in HostDown/HostMetricsMissing alerts.

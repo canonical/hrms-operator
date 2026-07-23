@@ -11,7 +11,7 @@ changes:
     Added observability support for the Frappe HRMS charm.
     The charm now exports Prometheus metrics from gunicorn via a statsd exporter,
     forwards workload logs to Loki using Pebble log forwarding,
-    and ships a Grafana dashboard together with Prometheus and Loki alert rules.
+    and ships a Grafana dashboard together with a Prometheus alert rule.
     These are consumed over the new ``metrics-endpoint``, ``logging``,
     and ``grafana-dashboard`` relations.
   urls:

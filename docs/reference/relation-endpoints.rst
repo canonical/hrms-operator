@@ -12,7 +12,7 @@ Observability
 * **metrics-endpoint** (provides, interface ``prometheus_scrape``): Exposes the
   HRMS Prometheus scrape job and alert rules to Prometheus.
 * **logging** (requires, interface ``loki_push_api``): Forwards workload logs to
-  Loki using Pebble log forwarding, and publishes Loki alert rules.
+  Loki using Pebble log forwarding.
 * **grafana-dashboard** (provides, interface ``grafana_dashboard``): Ships the
   HRMS Grafana dashboard.
 
