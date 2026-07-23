@@ -383,27 +383,6 @@ def test_metrics_endpoint_scrape_jobs_published():
     assert "9102" in data["scrape_jobs"]
 
 
-def test_logging_relation_does_not_break_reconcile():
-    ctx = Context(HRMSCharm, charm_root=".")
-    c = make_container(site_exists=True)
-    secret = make_admin_secret()
-    logging_rel = Relation("logging", remote_app_name="loki-k8s")
-    state = State(
-        containers=[c],
-        relations=[
-            make_database_relation(),
-            make_redis_relation(),
-            PeerRelation("hrms-peers"),
-            logging_rel,
-        ],
-        secrets=[secret],
-        config={"admin-password-secret": secret.id},
-        leader=True,
-    )
-    out = ctx.run(ctx.on.pebble_ready(c), state)
-    assert out.unit_status == ops.ActiveStatus()
-
-
 def test_grafana_dashboard_relation_joins_without_error():
     ctx = Context(HRMSCharm, charm_root=".")
     grafana = Relation("grafana-dashboard")

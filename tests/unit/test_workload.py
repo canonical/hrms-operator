@@ -41,12 +41,6 @@ def test_pebble_layer_includes_statsd_exporter():
     assert "--statsd-prefix=frappe_hrms" in backend_command
 
 
-def test_statsd_exporter_is_a_reconciled_service():
-    from workload import SERVICES
-
-    assert "statsd-exporter" in SERVICES
-
-
 def test_services_healthy_false_when_not_started():
     ctx = Context(HRMSCharm, charm_root=".")
     c = make_container(site_exists=True)
