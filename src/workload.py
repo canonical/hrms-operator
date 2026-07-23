@@ -31,13 +31,13 @@ METRICS_PORT = 9102
 REQUIRED_FRAPPE_APPS = {"erpnext", "hrms"}
 
 SERVICES = [
-    "statsd-exporter",
     "backend",
     "websocket",
     "frontend",
     "queue-short",
     "queue-long",
     "scheduler",
+    "statsd-exporter",
 ]
 
 CHECKS = [
@@ -477,7 +477,6 @@ class FrappeWorkload:
                     "user": "frappe",
                     "working-dir": BENCH_DIR,
                     "environment": bench_env,
-                    "after": ["statsd-exporter"],
                     "on-check-failure": {"backend-up": "restart"},
                 },
                 "websocket": {
