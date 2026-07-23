@@ -365,3 +365,60 @@ def test_active_when_site_exists():
     )
     out = ctx.run(ctx.on.pebble_ready(c), state)
     assert out.unit_status == ops.ActiveStatus()
+
+
+def test_metrics_endpoint_scrape_jobs_published():
+    ctx = Context(HRMSCharm, charm_root=".")
+    metrics = Relation("metrics-endpoint")
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=True)],
+        relations=[metrics],
+    )
+    out = ctx.run(ctx.on.relation_joined(metrics), state)
+    data = out.get_relation(metrics.id).local_app_data
+    assert "scrape_jobs" in data
+    assert "9102" in data["scrape_jobs"]
+
+
+def test_grafana_dashboard_relation_joins_without_error():
+    ctx = Context(HRMSCharm, charm_root=".")
+    grafana = Relation("grafana-dashboard")
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=True)],
+        relations=[grafana],
+    )
+    out = ctx.run(ctx.on.relation_joined(grafana), state)
+    # The relation joins cleanly; the dashboards payload is populated in a later change.
+    assert out.get_relation(grafana.id) is not None
+
+
+def test_prometheus_alert_rules_published():
+    ctx = Context(HRMSCharm, charm_root=".")
+    metrics = Relation("metrics-endpoint")
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=True)],
+        relations=[metrics],
+    )
+    out = ctx.run(ctx.on.relation_joined(metrics), state)
+    data = out.get_relation(metrics.id).local_app_data
+    assert "alert_rules" in data
+    # Built-in host-health alert injected by MetricsEndpointProvider.
+    assert "HostDown" in data["alert_rules"]
+    # Bundled application alert.
+    assert "HRMSHighServerErrorRatio" in data["alert_rules"]
+
+
+def test_grafana_dashboard_payload_is_non_empty():
+    ctx = Context(HRMSCharm, charm_root=".")
+    grafana = Relation("grafana-dashboard")
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=True)],
+        relations=[grafana],
+    )
+    out = ctx.run(ctx.on.relation_created(grafana), state)
+    data = out.get_relation(grafana.id).local_app_data
+    assert data["dashboards"]

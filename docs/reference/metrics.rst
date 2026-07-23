@@ -1,28 +1,25 @@
 .. meta::
-   :description: Reference documentation for the alerting and monitoring metrics provided by the __charm_name__ charm.
+   :description: Reference documentation for the alerting and monitoring metrics provided by the HRMS charm.
 
 .. _reference_metrics:
 
 Metrics
 =======
 
-.. TODO: Fill in this information or remove if not applicable.
-   Remember to update this file for your charm!! 
-   If applicable, use this placeholder to include information on the alerting
-   and monitoring metrics that exist for this charm. 
+HRMS exposes Prometheus metrics from a ``statsd_exporter`` process that runs
+inside the ``frappe-hrms`` container and listens on port ``9102`` at ``/metrics``.
+The gunicorn ``backend`` service is configured with ``--statsd-host`` so its
+request statistics (prefixed ``frappe_hrms``) are converted to Prometheus
+metrics by the exporter.
 
-   List the metrics and include a brief explanation of each one
-   (including units, if applicable). End each item with a period.
+Key metrics:
 
-   Add a description of the metrics:
-   * Are there metrics for containers, non-containerised workloads, snaps, or something else?
-   * How are the metrics defined or added?
-   * In what container is the metric run? What statistics or values does the metric provide? 
-   * How is the container started? 
-   * On what port(s) does the metric listen?
+* **gunicorn_requests_total**: Total number of HTTP requests handled by the
+  gunicorn backend.
+* **gunicorn_request_status_total**: HTTP responses broken down by status code
+  (label ``status``).
+* **gunicorn_request_duration_seconds**: Request processing duration.
+* **gunicorn_workers**: Number of active gunicorn workers.
 
-   EXAMPLE LIST:
-   * **keys_added**: Number of new keys added since startup.
-   * **keys_ignored**: Number of keys with no-op (unchanged) updates.
-   * **keys_removed**: Number of keys removed since startup.
-   * **http_request_duration_seconds**: Time spent generating HTTP responses.
+These metrics are scraped over the ``metrics-endpoint`` relation
+(interface ``prometheus_scrape``).
