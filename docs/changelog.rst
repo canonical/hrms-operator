@@ -18,8 +18,8 @@ Each revision is versioned by the date of the revision.
 Added
 ~~~~~
 
-- Support for the ``upgrade-charm`` hook. The charm now runs ``bench migrate``
-  on upgrade to apply pending database schema changes and data patches.
+- Added support for upgrade. The charm now runs ``bench migrate`` on upgrade if
+version drift is detected to apply pending database schema changes and data patches.
 
 2026-07-16
 ----------

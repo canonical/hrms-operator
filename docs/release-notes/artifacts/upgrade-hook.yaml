@@ -4,12 +4,12 @@
 version_schema: 2
 
 changes:
-- title: Added upgrade-charm hook with database migrations
+- title: Added support for upgrade
   author: swetha1654
   type: minor
   description: |
     Added support for the upgrade-charm hook. On charm upgrade, the charm now
-    stops workload services, runs ``bench migrate`` to apply any pending
+    checks for version drift, runs ``bench migrate`` to apply any pending
     database schema changes and patches, then restarts services. This ensures
     seamless upgrades when the OCI resource (rock image) is updated to a newer
     Frappe/ERPNext/HRMS version.
