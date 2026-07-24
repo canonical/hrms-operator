@@ -12,10 +12,9 @@ from scenario.errors import UncaughtCharmError
 from charm import HRMSCharm
 from unit.conftest import (
     BENCH,
-    CHECK_LAYER,
     CONTAINER,
+    DRIFTED_DISK_VERSIONS,
     make_admin_secret,
-    make_check_infos,
     make_container,
     make_database_relation,
     make_execs,
@@ -76,7 +75,7 @@ def test_existing_site_installs_missing_hrms_app():
     ctx = Context(HRMSCharm, charm_root=".")
     c = make_container(
         site_exists=True,
-        installed_apps_output="frappe\nerpnext\n",
+        installed_apps_output="frappe 16.0.0 version-16\nerpnext 16.0.0 version-16\n",
     )
     secret = make_admin_secret()
     state = State(
@@ -223,7 +222,7 @@ def test_installs_only_missing_apps():
     # hrms already present but erpnext missing: only erpnext is installed.
     c = make_container(
         site_exists=True,
-        installed_apps_output="frappe\nhrms\n",
+        installed_apps_output="frappe 16.0.0 version-16\nhrms 16.0.0 version-16\n",
     )
     secret = make_admin_secret()
     state = State(
@@ -369,9 +368,41 @@ def test_active_when_site_exists():
     assert out.unit_status == ops.ActiveStatus()
 
 
-def test_upgrade_runs_migrate():
-    """upgrade-charm event should run bench migrate and reach active status."""
+def test_migration_runs_when_version_drift_detected():
+    """Reconcile should run bench migrate when disk version differs from DB version."""
     ctx = Context(HRMSCharm, charm_root=".")
+    # Simulate version drift: disk has 16.0.1, list-apps (DB) has 16.0.0
+    c = make_container(site_exists=True, disk_versions=DRIFTED_DISK_VERSIONS)
+    secret = make_admin_secret()
+    state = State(
+        containers=[c],
+        relations=[
+            make_database_relation(),
+            make_redis_relation(),
+            PeerRelation("hrms-peers"),
+        ],
+        secrets=[secret],
+        config={"admin-password-secret": secret.id},
+        leader=True,
+    )
+    # pebble_ready is emitted when charm upgrades (container restarts)
+    out = ctx.run(ctx.on.pebble_ready(c), state)
+    assert out.unit_status == ops.ActiveStatus()
+    migrate_commands = [
+        args.command for args in ctx.exec_history[CONTAINER] if "migrate" in args.command
+    ]
+    assert [
+        f"{BENCH}/env/bin/bench",
+        "--site",
+        "frappe-hrms",
+        "migrate",
+    ] in migrate_commands
+
+
+def test_migration_skipped_when_versions_match():
+    """Reconcile should not run migrate when disk and DB versions match."""
+    ctx = Context(HRMSCharm, charm_root=".")
+    # Simulate matching versions: no migration needed
     c = make_container(site_exists=True)
     secret = make_admin_secret()
     state = State(
@@ -385,8 +416,9 @@ def test_upgrade_runs_migrate():
         config={"admin-password-secret": secret.id},
         leader=True,
     )
-    out = ctx.run(ctx.on.upgrade_charm(), state)
+    out = ctx.run(ctx.on.pebble_ready(c), state)
     assert out.unit_status == ops.ActiveStatus()
+    # Verify migrate was NOT called
     migrate_commands = [
         args.command for args in ctx.exec_history[CONTAINER] if "migrate" in args.command
     ]
@@ -395,31 +427,17 @@ def test_upgrade_runs_migrate():
         "--site",
         "frappe-hrms",
         "migrate",
-    ] in migrate_commands
+    ] not in migrate_commands
 
 
-def test_upgrade_errors_on_migrate_failure():
-    """upgrade-charm raises (error state) if bench migrate fails."""
+def test_migration_errors_raises_workload_error():
+    """Reconcile raises WorkloadError if bench migrate fails."""
     ctx = Context(HRMSCharm, charm_root=".")
-    c = Container(
-        CONTAINER,
-        can_connect=True,
-        execs=frozenset(
-            {
-                Exec(["chown"], return_code=0),
-                Exec(
-                    [f"{BENCH}/env/bin/bench", "--site", "frappe-hrms", "list-apps"],
-                    return_code=0,
-                    stdout="frappe\nerpnext\nhrms\n",
-                ),
-                Exec(
-                    [f"{BENCH}/env/bin/bench", "--site", "frappe-hrms", "migrate"],
-                    return_code=1,
-                ),
-            }
-        ),
-        layers={"checks": CHECK_LAYER},
-        check_infos=make_check_infos(),
+    # Simulate version drift with migrate failure
+    c = make_container(
+        site_exists=True,
+        disk_versions=DRIFTED_DISK_VERSIONS,
+        migrate_return_code=1,
     )
     secret = make_admin_secret()
     state = State(
@@ -434,5 +452,5 @@ def test_upgrade_errors_on_migrate_failure():
         leader=True,
     )
     with pytest.raises(UncaughtCharmError) as exc_info:
-        ctx.run(ctx.on.upgrade_charm(), state)
+        ctx.run(ctx.on.pebble_ready(c), state)
     assert isinstance(exc_info.value.__cause__, WorkloadError)

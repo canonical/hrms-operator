@@ -19,11 +19,31 @@ CHECK_LAYER = pebble.Layer(
     }
 )
 
+# Default version info for tests - versions match so no migration needed
+# bench version --format json returns a list of {app, version, branch, commit}
+DEFAULT_DISK_VERSIONS = (
+    '[{"app": "frappe", "version": "16.0.0"}, '
+    '{"app": "erpnext", "version": "16.0.0"}, '
+    '{"app": "hrms", "version": "16.0.0"}]'
+)
+# Disk versions with drift (16.0.1) - triggers migration
+DRIFTED_DISK_VERSIONS = (
+    '[{"app": "frappe", "version": "16.0.1"}, '
+    '{"app": "erpnext", "version": "16.0.1"}, '
+    '{"app": "hrms", "version": "16.0.1"}]'
+)
+# Default list-apps output with versions (format: "app version branch")
+DEFAULT_LIST_APPS_OUTPUT = (
+    "frappe 16.0.0 version-16\nerpnext 16.0.0 version-16\nhrms 16.0.0 version-16\n"
+)
+
 
 def make_execs(
     *,
     site_exists: bool = False,
-    installed_apps_output: str = "frappe\nerpnext\nhrms\n",
+    installed_apps_output: str = DEFAULT_LIST_APPS_OUTPUT,
+    disk_versions: str = DEFAULT_DISK_VERSIONS,
+    migrate_return_code: int = 0,
 ) -> frozenset:
     return frozenset(
         {
@@ -34,6 +54,22 @@ def make_execs(
                 [f"{BENCH}/env/bin/bench", "--site"], return_code=0, stdout=installed_apps_output
             ),
             Exec(["rm"], return_code=0),
+            Exec(
+                [
+                    f"{BENCH}/env/bin/bench",
+                    "--site",
+                    "frappe-hrms",
+                    "version",
+                    "--format",
+                    "json",
+                ],
+                return_code=0,
+                stdout=disk_versions,
+            ),
+            Exec(
+                [f"{BENCH}/env/bin/bench", "--site", "frappe-hrms", "migrate"],
+                return_code=migrate_return_code,
+            ),
         }
     )
 
@@ -53,7 +89,9 @@ def make_check_infos(*, frontend_up: bool = True) -> frozenset:
 def make_container(
     *,
     site_exists: bool = False,
-    installed_apps_output: str = "frappe\nerpnext\nhrms\n",
+    installed_apps_output: str = DEFAULT_LIST_APPS_OUTPUT,
+    disk_versions: str = DEFAULT_DISK_VERSIONS,
+    migrate_return_code: int = 0,
     checks_healthy: bool = True,
 ) -> Container:
     return Container(
@@ -62,6 +100,8 @@ def make_container(
         execs=make_execs(
             site_exists=site_exists,
             installed_apps_output=installed_apps_output,
+            disk_versions=disk_versions,
+            migrate_return_code=migrate_return_code,
         ),
         layers={"checks": CHECK_LAYER},
         check_infos=make_check_infos(frontend_up=checks_healthy),
