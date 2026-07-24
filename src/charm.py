@@ -10,6 +10,9 @@ import typing
 
 import ops
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
+from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
+from charms.loki_k8s.v1.loki_push_api import LogForwarder
+from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from charms.redis_k8s.v0.redis import RedisRelationCharmEvents, RedisRequires
 from charms.traefik_k8s.v2.ingress import IngressPerAppRequirer
 from pydantic import ValidationError
@@ -30,7 +33,11 @@ DATABASE_RELATION = "database"
 REDIS_RELATION = "redis"
 INGRESS_RELATION = "ingress"
 PEER_RELATION = "hrms-peers"
+METRICS_RELATION = "metrics-endpoint"
+GRAFANA_DASHBOARD_RELATION = "grafana-dashboard"
+LOGGING_RELATION = "logging"
 HTTP_PORT = 8080
+METRICS_PORT = 9102
 
 
 class HRMSCharm(ops.CharmBase):
@@ -58,6 +65,22 @@ class HRMSCharm(ops.CharmBase):
             port=HTTP_PORT,
             strip_prefix=True,
         )
+
+        self._metrics_endpoint = MetricsEndpointProvider(
+            self,
+            relation_name=METRICS_RELATION,
+            jobs=[{"static_configs": [{"targets": [f"*:{METRICS_PORT}"]}]}],
+            refresh_event=[
+                self.on.config_changed,
+                self.on.upgrade_charm,
+                self.on[CONTAINER_NAME].pebble_ready,
+            ],
+        )
+        self._grafana_dashboards = GrafanaDashboardProvider(
+            self,
+            relation_name=GRAFANA_DASHBOARD_RELATION,
+        )
+        self._logging = LogForwarder(self, relation_name=LOGGING_RELATION)
 
         for event in [
             self.on[CONTAINER_NAME].pebble_ready,
