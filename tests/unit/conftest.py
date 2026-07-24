@@ -70,6 +70,10 @@ def make_execs(
                 [f"{BENCH}/env/bin/bench", "--site", "frappe-hrms", "migrate"],
                 return_code=migrate_return_code,
             ),
+            Exec(
+                [f"{BENCH}/env/bin/bench", "--site", "frappe-hrms", "set-maintenance-mode"],
+                return_code=0,
+            ),
         }
     )
 

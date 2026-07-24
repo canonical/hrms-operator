@@ -366,6 +366,9 @@ class FrappeWorkload:
     def run_migrate(self) -> None:
         """Run bench migrate to apply database schema changes and patches.
 
+        Enables maintenance mode before migration to prevent user access during
+        schema changes, then disables it after migration completes.
+
         This is idempotent: if the database is already up-to-date with the
         app source on disk, the command completes quickly with no changes.
 
@@ -373,6 +376,7 @@ class FrappeWorkload:
             WorkloadError: If bench migrate fails.
         """
         logger.info("Running bench migrate for site %r", SITE_NAME)
+        self._set_maintenance_mode(mode="on")
         try:
             _, stderr = self._container.exec(
                 [BENCH_BIN, "--site", SITE_NAME, "migrate"],
@@ -389,6 +393,31 @@ class FrappeWorkload:
                 self._truncate_output_tail(exc.stderr),
             )
             raise WorkloadError("Failed to run bench migrate") from exc
+        finally:
+            self._set_maintenance_mode(mode="off")
+
+    def _set_maintenance_mode(self, *, mode: str) -> None:
+        """Enable or disable maintenance mode for the site.
+
+        Args:
+            mode: "on" to enable maintenance mode, "off" to disable.
+        """
+        logger.info("Setting maintenance mode %s for site %r", mode, SITE_NAME)
+        try:
+            self._container.exec(
+                [BENCH_BIN, "--site", SITE_NAME, "set-maintenance-mode", mode],
+                working_dir=BENCH_DIR,
+                user="frappe",
+                timeout=30,
+            ).wait()
+        except ops.pebble.ExecError as exc:
+            logger.error(
+                "Failed to set maintenance mode %s - stdout: %s, stderr: %s",
+                mode,
+                self._truncate_output_tail(exc.stdout),
+                self._truncate_output_tail(exc.stderr),
+            )
+            raise WorkloadError(f"Failed to set maintenance mode {mode}") from exc
 
     def reconcile_services(self, *, restart: bool = False) -> None:
         """Ensure all workload services are running with the current layer.
