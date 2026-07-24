@@ -284,6 +284,20 @@ class FrappeWorkload:
         Raises:
             WorkloadError: If the bench list-apps command fails unexpectedly.
         """
+        return list(self._get_installed_apps_with_versions(site_name).keys())
+
+    def _get_installed_apps_with_versions(self, site_name: str) -> dict[str, str]:
+        """Get the list of installed apps with their versions for a site.
+
+        Args:
+            site_name: The Frappe site name.
+
+        Returns:
+            A dict mapping app name to version string.
+
+        Raises:
+            WorkloadError: If the bench list-apps command fails unexpectedly.
+        """
         try:
             stdout, _ = self._container.exec(
                 [BENCH_BIN, "--site", site_name, "list-apps"],
@@ -294,11 +308,8 @@ class FrappeWorkload:
         except ops.pebble.ExecError as exc:
             stderr = exc.stderr or ""
             if "does not exist" in stderr and site_name in stderr:
-                logger.info(
-                    "Site %r not initialized yet",
-                    site_name,
-                )
-                return []
+                logger.info("Site %r not initialized yet", site_name)
+                return {}
 
             logger.warning(
                 "Failed to list apps on site %r: stdout=%s, stderr=%s",
@@ -308,17 +319,111 @@ class FrappeWorkload:
             )
             raise WorkloadError(f"Failed to list apps on site {site_name!r}") from exc
 
-        # bench list-apps outputs one app per line, commonly as:
-        # "<app> <version> <branch>".
-        raw_apps = [line.strip() for line in stdout.strip().split("\n") if line.strip()]
-        apps = [line.split()[0] for line in raw_apps if line.split()]
-        logger.debug(
-            "Installed apps for site %r: raw=%s normalized=%s",
-            site_name,
-            raw_apps,
-            apps,
-        )
-        return apps
+        # bench list-apps outputs one app per line as: "<app> <version> <branch>"
+        apps_with_versions: dict[str, str] = {}
+        for line in stdout.strip().split("\n"):
+            parts = line.strip().split()
+            if len(parts) >= 2:
+                apps_with_versions[parts[0]] = parts[1]
+        return apps_with_versions
+
+    def migration_needed(self) -> bool:
+        """Check if app versions on disk differ from versions recorded in database.
+
+        Compares the version in each app's source code against the version shown
+        in `bench list-apps` (which reads from the database, updated after each
+        successful migrate).
+
+        Returns:
+            True if any app's disk version differs from its DB version,
+            indicating that migration should be run.
+        """
+        try:
+            stdout, _ = self._container.exec(
+                [BENCH_BIN, "--site", SITE_NAME, "version", "--format", "json"],
+                working_dir=BENCH_DIR,
+                user="frappe",
+                timeout=30,
+            ).wait_output()
+            # bench version --format json returns a list of {app, version, branch, commit}
+            disk_versions_list = json.loads(stdout)
+            disk_versions = {item["app"]: item["version"] for item in disk_versions_list}
+
+            db_versions = self._get_installed_apps_with_versions(SITE_NAME)
+
+            for app_name, db_version in db_versions.items():
+                disk_version = disk_versions.get(app_name)
+
+                if disk_version and disk_version != db_version:
+                    logger.info(
+                        "Version mismatch for %s: disk=%s, db=%s - migration needed",
+                        app_name,
+                        disk_version,
+                        db_version,
+                    )
+                    return True
+
+            logger.debug("All app versions match, no migration needed")
+            return False
+
+        except (ops.pebble.ExecError, json.JSONDecodeError, WorkloadError) as exc:
+            raise WorkloadError("Failed to check app versions for migration") from exc
+
+    def run_migrate(self) -> None:
+        """Run bench migrate to apply database schema changes and patches.
+
+        Enables maintenance mode before migration to prevent user access during
+        schema changes, then disables it after migration completes.
+
+        This is idempotent: if the database is already up-to-date with the
+        app source on disk, the command completes quickly with no changes.
+
+        Raises:
+            WorkloadError: If bench migrate fails.
+        """
+        logger.info("Running bench migrate for site %r", SITE_NAME)
+        self._set_maintenance_mode(mode="on")
+        try:
+            _, stderr = self._container.exec(
+                [BENCH_BIN, "--site", SITE_NAME, "migrate"],
+                working_dir=BENCH_DIR,
+                user="frappe",
+                timeout=600,
+            ).wait_output()
+            if stderr:
+                logger.info("bench migrate stderr: %s", self._truncate_output_tail(stderr))
+        except ops.pebble.ExecError as exc:
+            logger.error(
+                "bench migrate failed - stdout: %s, stderr: %s",
+                self._truncate_output_tail(exc.stdout),
+                self._truncate_output_tail(exc.stderr),
+            )
+            raise WorkloadError("Failed to run bench migrate") from exc
+        finally:
+            self._set_maintenance_mode(mode="off")
+
+    def _set_maintenance_mode(self, *, mode: str) -> None:
+        """Enable or disable maintenance mode for the site.
+
+        Args:
+            mode: "on" to enable maintenance mode, "off" to disable.
+        """
+        logger.info("Setting maintenance mode %s for site %r", mode, SITE_NAME)
+        try:
+            self._container.exec(
+                [BENCH_BIN, "--site", SITE_NAME, "set-maintenance-mode", mode],
+                working_dir=BENCH_DIR,
+                user="frappe",
+                timeout=30,
+            ).wait()
+        except ops.pebble.ExecError as exc:
+            logger.error(
+                "Failed to set maintenance mode %s - stdout: %s, stderr: %s",
+                mode,
+                self._truncate_output_tail(exc.stdout),
+                self._truncate_output_tail(exc.stderr),
+            )
+            raise WorkloadError(f"Failed to set maintenance mode {mode}") from exc
 
     def reconcile_services(self, *, restart: bool = False) -> None:
         """Ensure all workload services are running with the current layer.

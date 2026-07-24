@@ -12,6 +12,15 @@ The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.1.0/>`
 
 Each revision is versioned by the date of the revision.
 
+2026-07-21
+----------
+
+Added
+~~~~~
+
+- Added support for upgrade. The charm now runs ``bench migrate`` on upgrade if
+version drift is detected to apply pending database schema changes and data patches.
+
 2026-07-16
 ----------
 

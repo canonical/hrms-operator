@@ -124,6 +124,11 @@ class HRMSCharm(ops.CharmBase):
             workload.setup_hrms(state)
 
         config_changed = workload.configure(state)
+
+        if workload.migration_needed():
+            self.unit.status = ops.MaintenanceStatus("Running database migrations")
+            workload.run_migrate()
+
         workload.reconcile_services(restart=config_changed)
 
         if workload.services_healthy():

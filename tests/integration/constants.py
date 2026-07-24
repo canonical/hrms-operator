@@ -12,3 +12,8 @@ CERTIFICATES_APP = "self-signed-certificates"
 
 GATEWAY_CLASS = "cilium"
 EXTERNAL_HOSTNAME = "hrms.internal"
+
+CHARM_NAME = "hrms"
+CHARMHUB_CHANNEL = "16/edge"
+DEPLOY_TIMEOUT = 10 * 60
+UPGRADE_TIMEOUT = 10 * 60
