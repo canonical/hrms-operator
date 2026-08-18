@@ -70,7 +70,7 @@ parts:
 
       bench init \
         --frappe-path=https://github.com/canonical/frappe \
-        --frappe-branch=version-${CRAFT_PROJECT_VERSION}-mysql \
+        --frappe-branch=feat/version-16-mysql-support-ISD-6236 \
         --python=/usr/bin/python3.14 \
         --no-procfile \
         --no-backups \
