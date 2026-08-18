@@ -38,7 +38,8 @@ parts:
       - python3.14-dev
       - libssl-dev
       - libffi-dev
-      - libmysqlclient-dev
+      - libmariadb-dev
+      - libmariadb-dev-compat
       - pkg-config
       - libjpeg-dev
       - zlib1g-dev
@@ -48,8 +49,8 @@ parts:
       - ca-certificates
       - libssl3
       - libffi8
-      - libmysqlclient21
-      - mysql-client
+      - libmariadb3
+      - mariadb-client
       - git
     prime:
       - -home/frappe/frappe-bench/apps/*/.git
