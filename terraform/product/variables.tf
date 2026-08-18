@@ -72,7 +72,7 @@ variable "redis" {
   description = "Configuration for the Redis application."
   type = object({
     app_name    = optional(string, "redis-k8s")
-    channel     = optional(string, "8.0/stable")
+    channel     = optional(string, "latest/edge")
     config      = optional(map(string), {})
     constraints = optional(string, "")
     revision    = optional(number)
