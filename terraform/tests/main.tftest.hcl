@@ -13,7 +13,7 @@ run "setup_tests" {
 
     database = {
       # renovate: depName="mysql-k8s"
-      revision = 8
+      revision = 423
     }
 
     redis = {

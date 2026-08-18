@@ -62,7 +62,7 @@ variable "database" {
     config      = optional(map(string), {})
     constraints = optional(string, "")
     revision    = optional(number)
-    base        = optional(string, "ubuntu@24.04")
+    base        = optional(string, "ubuntu@22.04")
     units       = optional(number, 1)
   })
   default = {}
