@@ -12,7 +12,7 @@ run "setup_tests" {
     revision = 3
 
     database = {
-      # renovate: depName="mariadb-k8s"
+      # renovate: depName="mysql-k8s"
       revision = 8
     }
 

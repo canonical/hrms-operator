@@ -65,7 +65,7 @@ def test_missing_database_relation():
 def test_database_relation_without_endpoints():
     database = Relation(
         "database",
-        remote_app_name="mariadb-k8s",
+        remote_app_name="mysql-k8s",
         remote_app_data={"username": "u", "password": "p", "database": "d"},
     )
     state = State(
@@ -82,7 +82,7 @@ def test_database_relation_without_endpoints():
 def test_database_endpoint_not_host_port():
     database = Relation(
         "database",
-        remote_app_name="mariadb-k8s",
+        remote_app_name="mysql-k8s",
         remote_app_data={
             "endpoints": "host-without-port",
             "username": "u",
@@ -104,7 +104,7 @@ def test_database_endpoint_not_host_port():
 def test_database_non_numeric_port():
     database = Relation(
         "database",
-        remote_app_name="mariadb-k8s",
+        remote_app_name="mysql-k8s",
         remote_app_data={
             "endpoints": "db.local:not-a-port",
             "username": "u",

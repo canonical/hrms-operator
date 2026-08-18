@@ -9,7 +9,7 @@ changes:
   type: minor
   description: |
     Added a Terraform module that deploys the Frappe HRMS charm alongside its
-    required dependencies (MariaDB and Redis) and wires up the integrations
+    required dependencies (MySQL and Redis) and wires up the integrations
     automatically.
   urls:
     pr:

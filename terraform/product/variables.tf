@@ -55,10 +55,10 @@ variable "units" {
 }
 
 variable "database" {
-  description = "Configuration for the MariaDB application."
+  description = "Configuration for the MySQL application."
   type = object({
-    app_name    = optional(string, "mariadb-k8s")
-    channel     = optional(string, "latest/edge")
+    app_name    = optional(string, "mysql-k8s")
+    channel     = optional(string, "8.0/stable")
     config      = optional(map(string), {})
     constraints = optional(string, "")
     revision    = optional(number)
@@ -72,7 +72,7 @@ variable "redis" {
   description = "Configuration for the Redis application."
   type = object({
     app_name    = optional(string, "redis-k8s")
-    channel     = optional(string, "latest/edge")
+    channel     = optional(string, "8.0/stable")
     config      = optional(map(string), {})
     constraints = optional(string, "")
     revision    = optional(number)

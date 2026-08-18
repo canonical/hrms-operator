@@ -186,7 +186,7 @@ class FrappeWorkload:
                     "--force",
                     "--no-setup-db",
                     "--db-type",
-                    "mariadb",
+                    "mysql",
                     "--db-host",
                     db.host,
                     "--db-port",
