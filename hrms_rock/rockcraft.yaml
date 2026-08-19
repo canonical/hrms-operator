@@ -51,6 +51,7 @@ parts:
       - libffi8
       - libmariadb3
       - mariadb-client
+      - mysql-client
       - git
     prime:
       - -home/frappe/frappe-bench/apps/*/.git
