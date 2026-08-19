@@ -7,6 +7,7 @@ import logging
 from urllib.parse import urlparse
 
 import jubilant
+import pytest
 
 from integration.constants import UPGRADE_TIMEOUT
 from integration.helpers import (
@@ -19,6 +20,7 @@ from integration.helpers import (
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.skip(reason="No published MySQL-compatible revision to upgrade from yet")
 def test_upgrade_from_charmhub_to_local(
     juju: jubilant.Juju,
     charmhub_hrms: str,
