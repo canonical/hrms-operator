@@ -129,6 +129,9 @@ class FrappeWorkload:
         Raises:
             WorkloadError: If any bench command fails.
         """
+        # Write config before bench new-site so Redis URL is available.
+        self._write_common_site_config(state)
+
         installed_apps = set(self._get_installed_apps(SITE_NAME))
 
         if "frappe" not in installed_apps:
@@ -143,8 +146,6 @@ class FrappeWorkload:
                 )
         else:
             logger.info("Frappe site %r already exists", SITE_NAME)
-
-        self._write_common_site_config(state)
 
         for app_name in sorted(REQUIRED_FRAPPE_APPS):
             if app_name not in installed_apps:
