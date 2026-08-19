@@ -113,4 +113,3 @@ parts:
       install -D -m 0755 \
         "statsd_exporter-${STATSD_EXPORTER_VERSION}.linux-${ARCH}/statsd_exporter" \
         "${CRAFT_PART_INSTALL}/bin/statsd_exporter"
-
