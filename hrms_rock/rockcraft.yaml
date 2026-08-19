@@ -51,6 +51,7 @@ parts:
       - libffi8
       - libmariadb3
       - mariadb-client
+      - mysql-client
       - git
     prime:
       - -home/frappe/frappe-bench/apps/*/.git
@@ -70,7 +71,8 @@ parts:
       pipx install --include-deps frappe-bench
 
       bench init \
-        --frappe-branch=version-${CRAFT_PROJECT_VERSION} \
+        --frappe-path=https://github.com/canonical/frappe \
+        --frappe-branch=feat/version-16-mysql-support-ISD-6236 \
         --python=/usr/bin/python3.14 \
         --no-procfile \
         --no-backups \

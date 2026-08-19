@@ -17,13 +17,13 @@ For information about the upstream software, see the official [Frappe HRMS docum
 ### Prerequisites
 
 * A Juju controller connected to a Kubernetes cluster.
-* The following charms available: `mariadb-k8s`, `redis-k8s`, and a K8s ingress charm. HRMS depends on `mariadb-k8s` and `redis-k8s` charms to start successfully.
+* The following charms available: `mysql-k8s`, `redis-k8s`, and a K8s ingress charm. HRMS depends on `mysql-k8s` and `redis-k8s` charms to start successfully.
 
 ### Deploy
 
 ```bash
 juju deploy hrms
-juju integrate hrms mariadb-k8s
+juju integrate hrms mysql-k8s
 juju integrate hrms redis-k8s
 juju integrate hrms ingress-configurator
 ```

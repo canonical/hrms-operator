@@ -16,7 +16,7 @@ from integration.constants import (
     GATEWAY_APP,
     GATEWAY_CLASS,
     INGRESS_CONFIGURATOR_APP,
-    MARIADB_APP,
+    MYSQL_APP,
     REDIS_APP,
 )
 from integration.helpers import all_settled
@@ -28,11 +28,11 @@ def admin_password_secret_fixture(juju: jubilant.Juju) -> str:
     return juju.add_secret("admin-password-secret", {"password": "test-admin-password"})
 
 
-@pytest.fixture(scope="module", name="mariadb")
-def mariadb_fixture(juju: jubilant.Juju) -> str:
-    """Deploy mariadb-k8s."""
-    juju.deploy(MARIADB_APP, channel="latest/edge", trust=True)
-    return MARIADB_APP
+@pytest.fixture(scope="module", name="mysql")
+def mysql_fixture(juju: jubilant.Juju) -> str:
+    """Deploy mysql-k8s."""
+    juju.deploy(MYSQL_APP, channel="8.0/stable", trust=True)
+    return MYSQL_APP
 
 
 @pytest.fixture(scope="module", name="redis")
@@ -86,7 +86,7 @@ def frappe_hrms_fixture(
     charm_path: str,
     resource_images: dict[str, str],
     admin_password_secret: str,
-    mariadb: str,
+    mysql: str,
     redis: str,
     ingress_configurator: str,
 ) -> str:
@@ -100,7 +100,7 @@ def frappe_hrms_fixture(
     )
     juju.grant_secret(admin_password_secret, FRAPPE_APP)
 
-    juju.integrate(f"{FRAPPE_APP}:database", f"{mariadb}:database")
+    juju.integrate(f"{FRAPPE_APP}:database", f"{mysql}:database")
     juju.integrate(f"{FRAPPE_APP}:redis", f"{redis}:redis")
     juju.integrate(f"{FRAPPE_APP}:ingress", f"{ingress_configurator}:ingress")
 
@@ -119,7 +119,7 @@ def charmhub_hrms_fixture(
     This deploys the charm from the published channel so that we can later
     refresh (upgrade) to the locally-packed charm.
     """
-    juju.deploy(MARIADB_APP, channel="latest/edge", trust=True)
+    juju.deploy(MYSQL_APP, channel="8.0/stable", trust=True)
     juju.deploy(REDIS_APP, channel="latest/edge", trust=True)
 
     juju.deploy(
@@ -131,7 +131,7 @@ def charmhub_hrms_fixture(
     )
     juju.grant_secret(admin_password_secret, FRAPPE_APP)
 
-    juju.integrate(f"{FRAPPE_APP}:database", f"{MARIADB_APP}:database")
+    juju.integrate(f"{FRAPPE_APP}:database", f"{MYSQL_APP}:database")
     juju.integrate(f"{FRAPPE_APP}:redis", f"{REDIS_APP}:redis")
     juju.integrate(f"{FRAPPE_APP}:ingress", f"{ingress_configurator}:ingress")
 

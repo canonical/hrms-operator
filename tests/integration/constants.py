@@ -3,7 +3,7 @@
 
 """Shared constants for the Frappe HRMS integration tests."""
 
-MARIADB_APP = "mariadb-k8s"
+MYSQL_APP = "mysql-k8s"
 REDIS_APP = "redis-k8s"
 FRAPPE_APP = "frappe-hrms"
 GATEWAY_APP = "gateway-api-integrator"

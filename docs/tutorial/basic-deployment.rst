@@ -133,7 +133,7 @@ Deploy the required backing services first, then deploy the Frappe HRMS charm:
 
 .. code-block:: bash
 
-    juju deploy mariadb-k8s --channel latest/edge --trust
+    juju deploy mysql-k8s --channel latest/edge --trust
     juju deploy redis-k8s --channel latest/edge --trust
     juju deploy self-signed-certificates --channel 1/stable --trust
     juju deploy gateway-api-integrator --channel 1/stable \
@@ -142,8 +142,8 @@ Deploy the required backing services first, then deploy the Frappe HRMS charm:
         --config hostname=hrms.internal --trust
     juju deploy hrms --channel 16/edge --trust --config admin-password-secret=$SECRET_ID
 
-MariaDB provides the database, Redis provides caching, and the Gateway API
-components expose the application via an external HTTPS endpoint. MariaDB and
+MySQL provides the database, Redis provides caching, and the Gateway API
+components expose the application via an external HTTPS endpoint. MySQL and
 Redis are mandatory dependencies for successful deployment of HRMS, while the
 Gateway API components are optional but recommended for production deployments.
 
@@ -163,7 +163,7 @@ dependencies:
 
     juju integrate gateway-api-integrator:certificates self-signed-certificates:certificates
     juju integrate gateway-api-integrator:gateway-route ingress-configurator
-    juju integrate hrms:database mariadb-k8s:database
+    juju integrate hrms:database mysql-k8s:database
     juju integrate hrms:redis redis-k8s:redis
     juju integrate hrms:ingress ingress-configurator:ingress
 
@@ -183,7 +183,7 @@ The output should be similar to the following:
     gateway-api-integrator             active      1  gateway-api-integrator    1/stable       165  10.152.183.112  no       Gateway addresses: 10.114.45.113
     hrms                               active      1  hrms                      16/edge          3  10.152.183.163  no       
     ingress-configurator               active      1  ingress-configurator      latest/stable   95  10.152.183.201  no       Ready
-    mariadb-k8s                        active      1  mariadb-k8s               latest/edge      8  10.152.183.24   no       Ready - serving 1 database(s)
+    mysql-k8s                        active      1  mysql-k8s               latest/edge      8  10.152.183.24   no       Ready - serving 1 database(s)
     redis-k8s                 7.2.5    active      1  redis-k8s                 latest/edge     42  10.152.183.227  no       
     self-signed-certificates           active      1  self-signed-certificates  1/stable       586  10.152.183.101  no       
 
@@ -191,7 +191,7 @@ The output should be similar to the following:
     gateway-api-integrator/0*    active    idle   10.1.0.117         Gateway addresses: 10.114.45.113
     hrms/0*                      active    idle   10.1.0.170         
     ingress-configurator/0*      active    idle   10.1.0.183         Ready
-    mariadb-k8s/0*               active    idle   10.1.0.44          Ready - serving 1 database(s)
+    mysql-k8s/0*               active    idle   10.1.0.44          Ready - serving 1 database(s)
     redis-k8s/0*                 active    idle   10.1.0.96          
     self-signed-certificates/0*  active    idle   10.1.0.91 
 

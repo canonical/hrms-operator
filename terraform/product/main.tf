@@ -1,12 +1,12 @@
 # Copyright 2025 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-resource "juju_application" "mariadb" {
+resource "juju_application" "mysql" {
   name       = var.database.app_name
   model_uuid = var.model_uuid
 
   charm {
-    name     = "mariadb-k8s"
+    name     = "mysql-k8s"
     channel  = var.database.channel
     revision = var.database.revision
     base     = var.database.base
@@ -59,7 +59,7 @@ resource "juju_integration" "hrms-database" {
   }
 
   application {
-    name     = juju_application.mariadb.name
+    name     = juju_application.mysql.name
     endpoint = "database"
   }
 }

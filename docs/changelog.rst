@@ -40,5 +40,5 @@ Changed
 Added
 ~~~~~
 
-- Terraform module to deploy Frappe HRMS with MariaDB and Redis.
+- Terraform module to deploy Frappe HRMS with MySQL and Redis.
 

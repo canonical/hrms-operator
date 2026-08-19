@@ -30,7 +30,7 @@ variable "revision" {
 }
 
 variable "database" {
-  description = "Minimal MariaDB test input."
+  description = "Minimal MySQL test input."
   type = object({
     revision = number
   })

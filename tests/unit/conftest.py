@@ -114,7 +114,7 @@ def make_container(
 
 def make_database_relation(
     *,
-    host: str = "mariadb-host",
+    host: str = "mysql-host",
     port: int = 3306,
     user: str = "frappe_user",
     password: str = "db-password",
@@ -122,7 +122,7 @@ def make_database_relation(
 ) -> Relation:
     return Relation(
         "database",
-        remote_app_name="mariadb-k8s",
+        remote_app_name="mysql-k8s",
         remote_app_data={
             "endpoints": f"{host}:{port}",
             "username": user,

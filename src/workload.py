@@ -129,6 +129,9 @@ class FrappeWorkload:
         Raises:
             WorkloadError: If any bench command fails.
         """
+        # Write config before bench new-site so Redis URL is available.
+        self._write_common_site_config(state)
+
         installed_apps = set(self._get_installed_apps(SITE_NAME))
 
         if "frappe" not in installed_apps:
@@ -143,8 +146,6 @@ class FrappeWorkload:
                 )
         else:
             logger.info("Frappe site %r already exists", SITE_NAME)
-
-        self._write_common_site_config(state)
 
         for app_name in sorted(REQUIRED_FRAPPE_APPS):
             if app_name not in installed_apps:
@@ -186,7 +187,7 @@ class FrappeWorkload:
                     "--force",
                     "--no-setup-db",
                     "--db-type",
-                    "mariadb",
+                    "mysql",
                     "--db-host",
                     db.host,
                     "--db-port",
@@ -306,9 +307,13 @@ class FrappeWorkload:
                 timeout=30,
             ).wait_output()
         except ops.pebble.ExecError as exc:
+            stdout = exc.stdout or ""
             stderr = exc.stderr or ""
             if "does not exist" in stderr and site_name in stderr:
                 logger.info("Site %r not initialized yet", site_name)
+                return {}
+            if "doesn't exist" in stdout or "does not exist" in stdout:
+                logger.info("Site %r database tables not yet created", site_name)
                 return {}
 
             logger.warning(

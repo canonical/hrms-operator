@@ -55,14 +55,14 @@ variable "units" {
 }
 
 variable "database" {
-  description = "Configuration for the MariaDB application."
+  description = "Configuration for the MySQL application."
   type = object({
-    app_name    = optional(string, "mariadb-k8s")
-    channel     = optional(string, "latest/edge")
+    app_name    = optional(string, "mysql-k8s")
+    channel     = optional(string, "8.0/stable")
     config      = optional(map(string), {})
     constraints = optional(string, "")
     revision    = optional(number)
-    base        = optional(string, "ubuntu@24.04")
+    base        = optional(string, "ubuntu@22.04")
     units       = optional(number, 1)
   })
   default = {}
