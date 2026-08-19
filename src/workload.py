@@ -306,9 +306,13 @@ class FrappeWorkload:
                 timeout=30,
             ).wait_output()
         except ops.pebble.ExecError as exc:
+            stdout = exc.stdout or ""
             stderr = exc.stderr or ""
             if "does not exist" in stderr and site_name in stderr:
                 logger.info("Site %r not initialized yet", site_name)
+                return {}
+            if "doesn't exist" in stdout or "does not exist" in stdout:
+                logger.info("Site %r database tables not yet created", site_name)
                 return {}
 
             logger.warning(
