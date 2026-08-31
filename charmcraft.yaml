@@ -20,7 +20,7 @@ description: |
   lifecycle, leave and attendance, expense claims, performance management, and
   payroll processing.
 
-  This charm deploys Frappe HRMS on Kubernetes, integrating with MariaDB and Redis.
+  This charm deploys Frappe HRMS on Kubernetes, integrating with MariaDB and Valkey.
 
 base: ubuntu@24.04
 platforms:
@@ -53,8 +53,8 @@ requires:
   database:
     interface: mysql_client
     limit: 1
-  redis:
-    interface: redis
+  valkey:
+    interface: valkey_client
     limit: 1
   ingress:
     interface: ingress

@@ -17,7 +17,7 @@ from unit.conftest import (
     make_container,
     make_database_relation,
     make_execs,
-    make_redis_relation,
+    make_valkey_relation,
 )
 from workload import COMMON_SITE_CONFIG, SITES_DIR
 
@@ -30,7 +30,7 @@ def test_common_site_config_written():
         containers=[c],
         relations=[
             make_database_relation(host="db.local", port=3306),
-            make_redis_relation(host="redis.local", port=6379),
+            make_valkey_relation(),
             PeerRelation("hrms-peers"),
         ],
         secrets=[secret],
@@ -46,8 +46,8 @@ def test_common_site_config_written():
 
     assert config["db_host"] == "db.local"
     assert config["db_port"] == 3306
-    assert config["redis_cache"] == "redis://redis.local:6379"
-    assert config["redis_queue"] == "redis://redis.local:6379"
+    assert config["redis_cache"] == "redis://hrms:valkey-pass@valkey-host:6379"
+    assert config["redis_queue"] == "redis://hrms:valkey-pass@valkey-host:6379"
     assert config["socketio_port"] == 9000
 
 
@@ -71,7 +71,7 @@ def test_common_config_not_rewritten_when_unchanged(tmp_path: Path):
         containers=[c],
         relations=[
             make_database_relation(host="db.local"),
-            make_redis_relation(host="redis.local"),
+            make_valkey_relation(),
             PeerRelation("hrms-peers"),
         ],
         secrets=[secret],

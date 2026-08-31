@@ -3,8 +3,14 @@
 
 """Fixtures and shared helpers for the unit tests."""
 
+from unittest import mock
+
+import pytest
+from dpcharmlibs.interfaces import ValkeyResponseModel
 from ops import pebble
 from scenario import CheckInfo, Container, Exec, Relation, Secret
+
+from state import CharmState
 
 CONTAINER = "frappe-hrms"
 BENCH = "/home/frappe/frappe-bench"
@@ -132,12 +138,43 @@ def make_database_relation(
     )
 
 
-def make_redis_relation(*, host: str = "redis-host", port: int = 6379) -> Relation:
+def make_valkey_relation() -> Relation:
     return Relation(
-        "redis",
-        remote_app_name="redis-k8s",
-        remote_units_data={0: {"hostname": host, "port": str(port)}},
+        "valkey",
+        remote_app_name="valkey",
     )
+
+
+def make_valkey_response(
+    *,
+    host: str = "valkey-host",
+    port: int = 6379,
+    endpoints: str | None = None,
+    username: str = "hrms",
+    password: str = "valkey-pass",
+    tls: bool = False,
+) -> ValkeyResponseModel:
+    return ValkeyResponseModel(
+        resource="*",
+        endpoints=endpoints if endpoints is not None else f"{host}:{port}",
+        username=username,
+        password=password,
+        tls=tls,
+    )
+
+
+@pytest.fixture(autouse=True)
+def valkey_ready():
+    """Make the Valkey integration report a ready response by default.
+
+    The valkey_client data contract stores credentials in Juju secrets, which is
+    impractical to reproduce in Scenario, so tests patch the response fetch seam.
+    Negative tests override this by patching ``_fetch_valkey_responses`` again.
+    """
+    with mock.patch.object(
+        CharmState, "_fetch_valkey_responses", return_value=[make_valkey_response()]
+    ):
+        yield
 
 
 def make_admin_secret(password: str | None = None) -> Secret:

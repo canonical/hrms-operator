@@ -4,7 +4,7 @@
 """Shared constants for the Frappe HRMS integration tests."""
 
 MARIADB_APP = "mariadb-k8s"
-REDIS_APP = "redis-k8s"
+VALKEY_APP = "valkey"
 FRAPPE_APP = "frappe-hrms"
 GATEWAY_APP = "gateway-api-integrator"
 INGRESS_CONFIGURATOR_APP = "ingress-configurator"

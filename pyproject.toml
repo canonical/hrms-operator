@@ -15,6 +15,7 @@ classifiers = [
 ]
 dependencies = [
   "cosl>=1.10.2",
+  "dpcharmlibs-interfaces>=1.1.0",
   "ops==3.8.1",
   "pydantic>=2.0.0",
 ]

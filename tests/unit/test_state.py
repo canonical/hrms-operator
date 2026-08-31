@@ -3,6 +3,8 @@
 
 """Unit tests for the Frappe HRMS charm state module."""
 
+from unittest import mock
+
 import ops
 import pytest
 from pydantic import ValidationError
@@ -16,7 +18,13 @@ from state import (
     MissingConfigError,
     MissingIntegrationError,
 )
-from unit.conftest import CONTAINER, make_admin_secret, make_database_relation, make_redis_relation
+from unit.conftest import (
+    CONTAINER,
+    make_admin_secret,
+    make_database_relation,
+    make_valkey_relation,
+    make_valkey_response,
+)
 
 
 def _load_charm_state(state: State) -> CharmState:
@@ -24,7 +32,7 @@ def _load_charm_state(state: State) -> CharmState:
     ctx = Context(HRMSCharm, charm_root=".")
     with ctx(ctx.on.update_status(), state) as manager:
         charm = manager.charm
-        return CharmState.from_charm(charm, charm._database, charm._redis)
+        return CharmState.from_charm(charm, charm._database, charm._valkey)
 
 
 def test_all_integrations_ready():
@@ -34,20 +42,25 @@ def test_all_integrations_ready():
         containers=[Container(CONTAINER, can_connect=False)],
         relations=[
             make_database_relation(host="db.local", port=5432),
-            make_redis_relation(host="redis.local", port=6380),
+            make_valkey_relation(),
         ],
         secrets=[secret],
         config={"admin-password-secret": secret.id},
     )
 
-    result = _load_charm_state(state)
+    with mock.patch.object(
+        CharmState,
+        "_fetch_valkey_responses",
+        return_value=[make_valkey_response(host="valkey.local", port=6380)],
+    ):
+        result = _load_charm_state(state)
 
     assert result.database.host == "db.local"
     assert result.database.port == 5432
     assert result.database.user == "frappe_user"
     assert result.database.password.get_secret_value() == "db-password"
     assert result.database.database == "hrms_db"
-    assert result.redis_url == "redis://redis.local:6380"
+    assert result.valkey_url == "redis://hrms:valkey-pass@valkey.local:6380"
     assert result.admin_password.get_secret_value() == "super-secret"
 
 
@@ -121,48 +134,63 @@ def test_database_non_numeric_port():
         _load_charm_state(state)
 
 
-def test_missing_redis_relation():
+def test_missing_valkey_relation():
     state = State(
         leader=True,
         containers=[Container(CONTAINER, can_connect=False)],
         relations=[make_database_relation()],
     )
-    with pytest.raises(
-        MissingIntegrationError, match="Integration 'redis' is required but not ready"
+    with (
+        mock.patch.object(CharmState, "_fetch_valkey_responses", return_value=[]),
+        pytest.raises(
+            MissingIntegrationError, match="Integration 'valkey' is required but not ready"
+        ),
     ):
         _load_charm_state(state)
 
 
-def test_redis_incomplete_without_port():
-    redis = Relation(
-        "redis",
-        remote_app_name="redis-k8s",
-        remote_units_data={0: {"hostname": "redis-host", "port": ""}},
-    )
+def test_valkey_incomplete_without_port():
+    response = make_valkey_response(endpoints="valkey-host")
     state = State(
         leader=True,
         containers=[Container(CONTAINER, can_connect=False)],
-        relations=[make_database_relation(), redis],
+        relations=[make_database_relation(), make_valkey_relation()],
     )
-    with pytest.raises(
-        MissingIntegrationError, match="Integration 'redis' is required but not ready"
+    with (
+        mock.patch.object(CharmState, "_fetch_valkey_responses", return_value=[response]),
+        pytest.raises(
+            MissingIntegrationError, match="Integration 'valkey' is required but not ready"
+        ),
     ):
         _load_charm_state(state)
 
 
-def test_redis_malformed_port():
-    redis = Relation(
-        "redis",
-        remote_app_name="redis-k8s",
-        remote_units_data={0: {"hostname": "redis-host", "port": "not-a-port"}},
-    )
+def test_valkey_malformed_port():
+    response = make_valkey_response(endpoints="valkey-host:not-a-port")
     state = State(
         leader=True,
         containers=[Container(CONTAINER, can_connect=False)],
-        relations=[make_database_relation(), redis],
+        relations=[make_database_relation(), make_valkey_relation()],
     )
-    with pytest.raises(
-        InvalidIntegrationError, match="Integration 'redis' published a malformed URL"
+    with (
+        mock.patch.object(CharmState, "_fetch_valkey_responses", return_value=[response]),
+        pytest.raises(
+            InvalidIntegrationError, match="Integration 'valkey' published a malformed endpoint"
+        ),
+    ):
+        _load_charm_state(state)
+
+
+def test_valkey_tls_unsupported():
+    response = make_valkey_response(tls=True)
+    state = State(
+        leader=True,
+        containers=[Container(CONTAINER, can_connect=False)],
+        relations=[make_database_relation(), make_valkey_relation()],
+    )
+    with (
+        mock.patch.object(CharmState, "_fetch_valkey_responses", return_value=[response]),
+        pytest.raises(InvalidIntegrationError, match="Integration 'valkey' has TLS enabled"),
     ):
         _load_charm_state(state)
 
@@ -171,7 +199,7 @@ def test_missing_admin_password_config():
     state = State(
         leader=True,
         containers=[Container(CONTAINER, can_connect=False)],
-        relations=[make_database_relation(), make_redis_relation()],
+        relations=[make_database_relation(), make_valkey_relation()],
     )
     with pytest.raises(
         MissingConfigError, match="Configuration 'admin-password-secret' must be set"
@@ -184,7 +212,7 @@ def test_admin_password_secret_not_found():
     state = State(
         leader=True,
         containers=[Container(CONTAINER, can_connect=False)],
-        relations=[make_database_relation(), make_redis_relation()],
+        relations=[make_database_relation(), make_valkey_relation()],
         config={"admin-password-secret": orphan_secret.id},
     )
     with pytest.raises(
@@ -199,7 +227,7 @@ def test_admin_password_secret_without_password_key():
     state = State(
         leader=True,
         containers=[Container(CONTAINER, can_connect=False)],
-        relations=[make_database_relation(), make_redis_relation()],
+        relations=[make_database_relation(), make_valkey_relation()],
         secrets=[secret],
         config={"admin-password-secret": secret.id},
     )
@@ -223,7 +251,7 @@ def test_admin_password_secret_unreadable(monkeypatch):
     state = State(
         leader=True,
         containers=[Container(CONTAINER, can_connect=False)],
-        relations=[make_database_relation(), make_redis_relation()],
+        relations=[make_database_relation(), make_valkey_relation()],
         secrets=[secret],
         config={"admin-password-secret": secret.id},
     )
