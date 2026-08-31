@@ -29,7 +29,7 @@ class DNSResolverHTTPSAdapter(requests.adapters.HTTPAdapter):
         self,
         request: requests.PreparedRequest,
         stream: bool = False,
-        timeout: None | float | tuple[float, float] | tuple[float, None] = None,
+        timeout: float | tuple[float, float] | tuple[float, None] | None = None,
         verify: bool | str = True,
         cert: typing.Any = None,
         proxies: typing.Mapping[str, str] | None = None,
