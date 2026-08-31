@@ -526,7 +526,7 @@ class FrappeWorkload:
             "developer_mode": 0,
             "auto_email_id": "",
             "mail_login": "",
-            "mail_password": "",
+            "mail_password": "",  # nosec B105
             "mail_port": 587,
             "mail_server": "",
             "use_ssl": 0,

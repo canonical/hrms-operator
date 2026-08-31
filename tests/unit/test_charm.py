@@ -8,7 +8,7 @@ from unittest import mock
 import ops
 import pytest
 from pydantic import ValidationError
-from scenario import Container, Context, Exec, PeerRelation, State
+from scenario import Container, Context, Exec, PeerRelation, Relation, State
 from scenario.errors import UncaughtCharmError
 
 from charm import HRMSCharm
@@ -444,7 +444,7 @@ def test_migration_runs_when_version_drift_detected():
         containers=[c],
         relations=[
             make_database_relation(),
-            make_redis_relation(),
+            make_valkey_relation(),
             PeerRelation("hrms-peers"),
         ],
         secrets=[secret],
@@ -475,7 +475,7 @@ def test_migration_skipped_when_versions_match():
         containers=[c],
         relations=[
             make_database_relation(),
-            make_redis_relation(),
+            make_valkey_relation(),
             PeerRelation("hrms-peers"),
         ],
         secrets=[secret],
@@ -510,7 +510,7 @@ def test_migration_errors_raises_workload_error():
         containers=[c],
         relations=[
             make_database_relation(),
-            make_redis_relation(),
+            make_valkey_relation(),
             PeerRelation("hrms-peers"),
         ],
         secrets=[secret],

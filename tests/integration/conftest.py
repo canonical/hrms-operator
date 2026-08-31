@@ -25,7 +25,7 @@ from integration.helpers import all_settled
 @pytest.fixture(scope="module", name="admin_password_secret")
 def admin_password_secret_fixture(juju: jubilant.Juju) -> str:
     """Create a Juju secret holding the HRMS admin password."""
-    return juju.add_secret("admin-password-secret", {"password": "test-admin-password"})
+    return juju.add_secret("admin-password-secret", {"password": "test-admin-password"})  # nosec B105
 
 
 @pytest.fixture(scope="module", name="mariadb")
@@ -120,7 +120,7 @@ def charmhub_hrms_fixture(
     refresh (upgrade) to the locally-packed charm.
     """
     juju.deploy(MARIADB_APP, channel="latest/edge", trust=True)
-    juju.deploy(REDIS_APP, channel="latest/edge", trust=True)
+    juju.deploy(VALKEY_APP, channel="9/edge", trust=True)
 
     juju.deploy(
         CHARM_NAME,
@@ -132,7 +132,7 @@ def charmhub_hrms_fixture(
     juju.grant_secret(admin_password_secret, FRAPPE_APP)
 
     juju.integrate(f"{FRAPPE_APP}:database", f"{MARIADB_APP}:database")
-    juju.integrate(f"{FRAPPE_APP}:redis", f"{REDIS_APP}:redis")
+    juju.integrate(f"{FRAPPE_APP}:valkey", f"{VALKEY_APP}:valkey-client")
     juju.integrate(f"{FRAPPE_APP}:ingress", f"{ingress_configurator}:ingress")
 
     juju.wait(all_settled, timeout=DEPLOY_TIMEOUT)

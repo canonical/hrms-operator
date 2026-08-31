@@ -79,7 +79,7 @@ def test_database_relation_without_endpoints():
     database = Relation(
         "database",
         remote_app_name="mariadb-k8s",
-        remote_app_data={"username": "u", "password": "p", "database": "d"},
+        remote_app_data={"username": "u", "password": "p", "database": "d"},  # nosec B105
     )
     state = State(
         leader=True,
@@ -99,7 +99,7 @@ def test_database_endpoint_not_host_port():
         remote_app_data={
             "endpoints": "host-without-port",
             "username": "u",
-            "password": "p",
+            "password": "p",  # nosec B105
             "database": "d",
         },
     )
@@ -121,7 +121,7 @@ def test_database_non_numeric_port():
         remote_app_data={
             "endpoints": "db.local:not-a-port",
             "username": "u",
-            "password": "p",
+            "password": "p",  # nosec B105
             "database": "d",
         },
     )
